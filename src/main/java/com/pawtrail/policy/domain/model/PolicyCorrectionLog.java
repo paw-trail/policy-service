@@ -1,6 +1,7 @@
 package com.pawtrail.policy.domain.model;
 
 import com.pawtrail.policy.domain.enums.SourceType;
+import com.pawtrail.policy.domain.support.JsonSnapshot;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -59,6 +60,11 @@ public class PolicyCorrectionLog {
     // 전후를 함께 담는 것은 이력을 두는 이유가 "원래 뭐였지" 이기 때문임
     // 뒤만 남기면 그 질문에 답을 못 함
     // policy 가 덮어쓰기 전에 기존 행을 어차피 읽으므로 조회가 더 붙지 않음
+    //
+    // 스무 필드 스냅샷이라 null 값이 반드시 섞임
+    // PolicyFields 가 null 을 "정보 없음" 으로 쓰기 때문이며
+    // Map.copyOf 는 null 값에서 NullPointerException 을 냄
+    // JsonSnapshot 이 null 을 그대로 두면서 깊게 복사함
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "before_value", nullable = false, updatable = false, columnDefinition = "jsonb")
     private Map<String, Object> beforeValue;
@@ -88,8 +94,8 @@ public class PolicyCorrectionLog {
                                 String reason, String correctedBy) {
         this.placeId = placeId;
         this.source = source;
-        this.beforeValue = Map.copyOf(beforeValue);
-        this.afterValue = Map.copyOf(afterValue);
+        this.beforeValue = JsonSnapshot.deepCopy(beforeValue);
+        this.afterValue = JsonSnapshot.deepCopy(afterValue);
         this.reason = reason;
         this.correctedBy = correctedBy;
         this.correctedAt = LocalDateTime.now();
@@ -110,6 +116,9 @@ public class PolicyCorrectionLog {
                                          String reason, String correctedBy) {
         if (placeId == null || source == null) {
             throw new IllegalArgumentException("placeId 와 source 는 필수입니다.");
+        }
+        if (source != SourceType.MANUAL && source != SourceType.OWNER) {
+            throw new IllegalArgumentException("정정의 소스는 MANUAL 이거나 OWNER 여야 합니다.");
         }
         if (beforeValue == null || afterValue == null) {
             throw new IllegalArgumentException("정정 전후 값은 필수입니다.");

@@ -24,6 +24,6 @@ public class PolicyEvidenceRepositoryImpl implements PolicyEvidenceRepository {
 
     @Override
     public List<PolicyEvidence> findByPlaceId(UUID placeId) {
-        return policyEvidenceJpaRepository.findByPlaceIdAndDeletedAtIsNull(placeId);
+        return policyEvidenceJpaRepository.findByPlaceId(placeId);
     }
 }

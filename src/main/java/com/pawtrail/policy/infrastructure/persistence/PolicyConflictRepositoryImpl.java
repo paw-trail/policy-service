@@ -24,6 +24,6 @@ public class PolicyConflictRepositoryImpl implements PolicyConflictRepository {
 
     @Override
     public List<PolicyConflict> findByPlaceId(UUID placeId) {
-        return policyConflictJpaRepository.findByPlaceIdAndDeletedAtIsNull(placeId);
+        return policyConflictJpaRepository.findByPlaceId(placeId);
     }
 }

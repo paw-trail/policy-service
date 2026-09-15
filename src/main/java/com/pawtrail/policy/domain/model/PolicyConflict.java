@@ -2,6 +2,7 @@ package com.pawtrail.policy.domain.model;
 
 import com.pawtrail.common.entity.BaseEntity;
 import com.pawtrail.policy.domain.enums.ConflictType;
+import com.pawtrail.policy.domain.support.JsonSnapshot;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -50,6 +51,10 @@ public class PolicyConflict extends BaseEntity {
     // 필드마다 타입이 달라(boolean · numeric · text[]) 컬럼으로는 못 담음
     // 관리자 화면이 그대로 펼쳐 보여주기만 하고 조건으로 조회하지 않으므로
     // jsonb 로 두어도 인덱스가 필요하지 않음
+    //
+    // 값에 목록이 섞임 — excluded_zones 처럼 text[] 인 필드가 넷임
+    // 바깥 맵만 복사하면 그 목록이 원본과 같은 것을 가리켜
+    // 감지 시점의 값이 나중에 바뀔 수 있으므로 JsonSnapshot 으로 깊게 복사함
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "source_values", nullable = false, columnDefinition = "jsonb")
     private Map<String, Object> sourceValues;
@@ -73,7 +78,7 @@ public class PolicyConflict extends BaseEntity {
                            ConflictType conflictType) {
         this.placeId = placeId;
         this.fieldName = fieldName;
-        this.sourceValues = Map.copyOf(sourceValues);
+        this.sourceValues = JsonSnapshot.deepCopy(sourceValues);
         this.conflictType = conflictType;
         this.detectedAt = LocalDateTime.now();
         this.resolved = false;

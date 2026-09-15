@@ -166,8 +166,13 @@ CREATE TABLE pet_policy_source
     updated_at         timestamp     NOT NULL,
     updated_by         varchar(45)   NOT NULL,
 
-    -- 재추출로 옛 결과를 무효화할 때 씁니다.
-    -- 파이프라인이 자기 정리를 하는 자리이며 사람이 지우는 용도가 아닙니다.
+    -- 이 테이블에서는 사용하지 않고 항상 NULL 입니다.
+    -- 이 표에서 행이 사라지는 사건이 없습니다.
+    -- 재추출도 관리자 정정도 그 소스의 행을 갱신하지 지우지 않습니다.
+    --
+    -- 아래 uq_policy_source_place 가 전체 행에 걸려 있는 것과 짝입니다.
+    -- 무효화한 행을 남기는 방식으로 가려면 이 제약을 부분 UNIQUE 로 바꿔야 하는데,
+    -- 그러면 되살리는 경로가 없어 그 장소의 그 소스가 영영 막힙니다.
     deleted_at         timestamp,
     deleted_by         varchar(45)
 );
@@ -319,7 +324,8 @@ CREATE TABLE policy_evidence
     updated_at    timestamp     NOT NULL,
     updated_by    varchar(45)   NOT NULL,
 
-    -- 재추출로 옛 근거를 무효화할 때 씁니다.
+    -- 이 테이블에서는 사용하지 않고 항상 NULL 입니다.
+    -- 근거는 소스 행과 함께 갱신되며 따로 지워지지 않습니다.
     deleted_at    timestamp,
     deleted_by    varchar(45)
 );
@@ -381,7 +387,10 @@ CREATE TABLE policy_conflict
     updated_at    timestamp     NOT NULL,
     updated_by    varchar(45)   NOT NULL,
 
-    -- 재병합으로 옛 충돌을 무효화할 때 씁니다.
+    -- 이 테이블에서는 사용하지 않고 항상 NULL 입니다.
+    -- 닫힌 충돌은 resolved = true 로만 표현합니다.
+    -- 둘 다 쓰면 조회 조건이 두 갈래로 갈려 한쪽만 고쳤을 때
+    -- 정정한 충돌이 목록에 남는 사고가 납니다.
     deleted_at    timestamp,
     deleted_by    varchar(45)
 );

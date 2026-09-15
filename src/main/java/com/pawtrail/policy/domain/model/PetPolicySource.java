@@ -35,10 +35,14 @@ import org.hibernate.annotations.UuidGenerator;
  * 관리자가 같은 장소를 두 번 정정하면 MANUAL 행을 덮어써 앞선 값이 사라지는데,
  * 그것은 policy_correction_log 가 받습니다.
  *
- * BaseEntity 는 그대로 상속합니다.
- * deleted_at 을 쓰는 자리가 실제로 있습니다.
- * 재추출로 옛 결과를 무효화할 때이며, 파이프라인이 자기 정리를 하는 자리이지
- * 사람이 지우는 용도가 아닙니다.
+ * BaseEntity 는 그대로 상속하되 deleted_at 과 deleted_by 는 항상 null 입니다.
+ * 이 표에서 행이 사라지는 사건이 없습니다.
+ * 재추출도 관리자 정정도 그 소스의 행을 갱신하지 지우지 않습니다.
+ *
+ * 소프트 딜리트를 쓰지 않기로 한 것은 uq_policy_source_place 때문이기도 합니다.
+ * 무효화한 행을 남겨 두면 같은 소스를 다시 넣을 때 그 제약에 걸리는데,
+ * 되살리는 경로가 없어 그 장소의 그 소스는 영영 막힙니다.
+ * place 의 place_source_link 가 같은 이유로 같은 형태입니다.
  */
 @Entity
 @Table(name = "pet_policy_source")
@@ -157,12 +161,20 @@ public class PetPolicySource extends BaseEntity {
      * 새 행을 만들지 않는 것은 uq_policy_source_place 때문이기도 하지만,
      * 이 표의 뜻이 "지금 이 소스가 뭐라고 하는가" 이기 때문입니다.
      * 지난번에 뭐라고 했는지는 이 표의 답이 아닙니다.
+     *
+     * <b>정정으로 만들어진 행에는 쓸 수 없습니다.</b>
+     * source 는 그대로 둔 채 추출 메타만 채우고 사유를 지우게 되는데,
+     * 그러면 배치가 뽑은 값이 MANUAL 이나 OWNER 를 달고 병합 최상위를 차지합니다.
+     * 정정을 소스 티어로 넣은 설계가 정확히 그 자리에서 뒤집힙니다.
      */
     public void replaceExtraction(PolicyFields fields, ExtractionMethod extractionMethod,
                                   String extractedBy, String promptVersion,
                                   LocalDateTime extractedAt) {
         if (fields == null) {
             throw new IllegalArgumentException("조건은 필수입니다.");
+        }
+        if (isCorrection()) {
+            throw new IllegalStateException("정정으로 만들어진 소스에는 추출 결과를 덮을 수 없습니다.");
         }
         this.fields = fields;
         this.extractionMethod = extractionMethod;
@@ -188,6 +200,9 @@ public class PetPolicySource extends BaseEntity {
         if (reason == null || reason.isBlank()) {
             throw new IllegalArgumentException("정정에는 사유가 필요합니다.");
         }
+        if (!isCorrection()) {
+            throw new IllegalStateException("공공 소스의 행은 정정으로 덮을 수 없습니다.");
+        }
         this.fields = fields;
         this.extractionMethod = ExtractionMethod.MANUAL;
         this.extractedBy = null;
@@ -195,6 +210,17 @@ public class PetPolicySource extends BaseEntity {
         this.extractedAt = LocalDateTime.now();
         this.status = ExtractionStatus.DONE;
         this.reason = reason;
+    }
+
+    /**
+     * 사람이 넣은 행인지입니다.
+     *
+     * 갱신 경로가 둘로 갈리는 기준입니다.
+     * 배치가 뽑은 행과 사람이 고친 행은 채우는 값이 반대라
+     * 서로의 갱신 메서드가 먹으면 두 성격이 섞인 행이 만들어집니다.
+     */
+    public boolean isCorrection() {
+        return source == SourceType.MANUAL || source == SourceType.OWNER;
     }
 
     private static void validate(UUID placeId, SourceType source, PolicyFields fields) {

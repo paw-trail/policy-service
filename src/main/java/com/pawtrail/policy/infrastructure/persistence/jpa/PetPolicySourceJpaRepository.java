@@ -13,8 +13,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
  */
 public interface PetPolicySourceJpaRepository extends JpaRepository<PetPolicySource, UUID> {
 
-    Optional<PetPolicySource> findByPlaceIdAndSourceAndDeletedAtIsNull(UUID placeId,
+    Optional<PetPolicySource> findByPlaceIdAndSource(UUID placeId,
                                                                        SourceType source);
 
-    List<PetPolicySource> findByPlaceIdAndDeletedAtIsNull(UUID placeId);
+    List<PetPolicySource> findByPlaceId(UUID placeId);
 }

@@ -11,5 +11,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
  */
 public interface PolicyConflictJpaRepository extends JpaRepository<PolicyConflict, UUID> {
 
-    List<PolicyConflict> findByPlaceIdAndDeletedAtIsNull(UUID placeId);
+    List<PolicyConflict> findByPlaceId(UUID placeId);
 }

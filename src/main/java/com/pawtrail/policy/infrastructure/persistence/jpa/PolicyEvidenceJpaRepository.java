@@ -11,5 +11,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
  */
 public interface PolicyEvidenceJpaRepository extends JpaRepository<PolicyEvidence, UUID> {
 
-    List<PolicyEvidence> findByPlaceIdAndDeletedAtIsNull(UUID placeId);
+    List<PolicyEvidence> findByPlaceId(UUID placeId);
 }
