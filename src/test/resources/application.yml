@@ -7,7 +7,7 @@
 #   main 에 있는 세 줄 중 spring.application.name 과 spring.profiles.default 를 다시 적었고
 #   spring.config.import 는 아래에서 설정 서버를 끄므로 적지 않음
 #
-# *아래 값 중 넷은 config 저장소 1계층(application.yml)의 사본임
+# *아래 값 둘(ddl-auto · flyway.locations)은 config 저장소 1계층(application.yml)의 사본임
 #   테스트에서는 설정 서버를 끄므로 1계층 값이 하나도 내려오지 않기 때문임
 #   config 저장소에서 그 값을 바꾸면 여기도 함께 봐야 함
 
@@ -15,7 +15,7 @@ spring:
   application:
     # 가려진 main 쪽 값을 다시 적은 것임
     # 없으면 로그의 appName 과 유레카 등록 이름이 unknown 이 됨
-    name: template-service
+    name: policy-service
 
   profiles:
     # 가려진 main 쪽 값을 다시 적은 것임
