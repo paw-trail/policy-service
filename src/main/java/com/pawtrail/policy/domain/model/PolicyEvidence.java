@@ -24,6 +24,9 @@ import org.hibernate.annotations.UuidGenerator;
  *
  * 발췌만 보여주면 LLM 이 고른 것을 LLM 근거로 확인하는 순환이 됩니다.
  * 그래서 원문 전체는 ingest 의 raw_document 가 따로 내보냅니다.
+ *
+ * 소스마다 제 근거를 가지므로 병합에서 진 소스의 근거도 남습니다.
+ * 어느 근거를 보일지는 pet_policy 의 field_sources 로 가립니다.
  */
 @Entity
 @Table(name = "policy_evidence")
@@ -46,7 +49,8 @@ public class PolicyEvidence extends BaseEntity {
     private SourceType source;
 
     // 어느 조건의 근거인지임
-    // pet_policy 의 컬럼 이름이 들어감
+    // 조건 이름(FieldSpec 이름 · camelCase)이 들어감.  DB 컬럼 이름이 아님
+    // bulk 요청이 그 밖의 이름을 400 으로 막음
     @Column(name = "field_name", nullable = false, updatable = false, length = 40)
     private String fieldName;
 
@@ -83,7 +87,7 @@ public class PolicyEvidence extends BaseEntity {
      *
      * 고치는 메서드를 두지 않았습니다.
      * 근거는 원문에서 뽑은 사실이라 고칠 일이 없고,
-     * 재추출로 내용이 달라지면 옛 행을 무효화하고 새로 남깁니다.
+     * 재추출로 내용이 달라지면 그 소스의 근거를 통째로 지우고 새로 넣습니다.
      */
     public static PolicyEvidence of(UUID placeId, SourceType source, String fieldName,
                                     String originField, Integer segmentIndex, String segmentText) {

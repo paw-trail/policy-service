@@ -213,6 +213,22 @@ public class PetPolicySource extends BaseEntity {
     }
 
     /**
+     * 조건 스무 가지를 돌려줍니다.
+     *
+     * <b>null 을 돌려주지 않습니다.</b>
+     * 하이버네이트는 임베디드의 컬럼이 전부 NULL 이면 값 객체 자체를 null 로 읽습니다.
+     * extract 가 원문에서 조건을 하나도 못 찾아 스무 칸을 비워 보낸 행이 그렇게 되는데,
+     * 같은 장소에 다른 소스가 들어와 재병합할 때 이 행을 다시 읽으면
+     * 병합이 null 에서 칸을 꺼내다 멈춥니다.
+     * 한 트랜잭션 안에서는 저장한 객체가 그대로 돌아와 드러나지 않습니다.
+     *
+     * 비어 있는 조건은 "정보 없음" 이라는 값이므로 빈 값 객체로 돌려줍니다.
+     */
+    public PolicyFields getFields() {
+        return fields == null ? PolicyFields.empty() : fields;
+    }
+
+    /**
      * 사람이 넣은 행인지입니다.
      *
      * 갱신 경로가 둘로 갈리는 기준입니다.

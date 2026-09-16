@@ -53,6 +53,9 @@ public class PolicyMergeService {
      * 소스 내 어긋남은 건드리지 않습니다.
      * 그것은 extract 가 실어 보내는 것이라 적재가 갈아 끼웁니다.
      *
+     * 칸별 승자는 판과 상관없이 늘 새로 적습니다.
+     * batch 가 근거를 고르는 기준이라 값이 같아도 승자가 바뀌면 그대로 따라가야 합니다.
+     *
      * @return 병합 결과가 이전과 달라졌는지
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
@@ -65,10 +68,12 @@ public class PolicyMergeService {
 
         if (existing.isEmpty()) {
             petPolicyRepository.save(PetPolicy.merged(
-                    placeId, result.fields(), result.hasConflict(), result.sourcePriority()));
+                    placeId, result.fields(), result.hasConflict(), result.sourcePriority(),
+                    result.fieldSources()));
         } else {
             existing.get().remerge(
-                    result.fields(), result.hasConflict(), result.sourcePriority(), changed);
+                    result.fields(), result.hasConflict(), result.sourcePriority(),
+                    result.fieldSources(), changed);
         }
 
         replaceCrossSourceConflicts(placeId, result);
@@ -111,6 +116,11 @@ public class PolicyMergeService {
      * 조건 한 벌과 충돌 여부를 함께 봅니다.
      * 조건이 같아도 어긋남이 생기거나 사라졌으면 화면에 배지가 붙고 떨어지므로
      * 사용자에게는 달라진 것입니다.
+     *
+     * 칸별 승자는 보지 않습니다.
+     * 승자만 바뀐 재병합은 사용자에게 보이는 값이 같아 알림 대상이 아닙니다.
+     * 다만 batch 가 보여 줄 근거는 바뀌므로, 판을 올릴지는 policy.changed 이슈에서
+     * 근거만 바뀐 경우와 함께 봅니다.
      */
     private boolean isChanged(PetPolicy existing, MergeResult result) {
         return hasDifferentFields(existing.getFields(), result.fields())

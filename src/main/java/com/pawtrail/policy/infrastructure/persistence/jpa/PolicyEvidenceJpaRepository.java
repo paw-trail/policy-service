@@ -17,6 +17,8 @@ public interface PolicyEvidenceJpaRepository extends JpaRepository<PolicyEvidenc
 
     List<PolicyEvidence> findByPlaceId(UUID placeId);
 
+    List<PolicyEvidence> findByPlaceIdIn(List<UUID> placeIds);
+
     /**
      * 한 소스의 근거를 한 번에 지웁니다.
      *

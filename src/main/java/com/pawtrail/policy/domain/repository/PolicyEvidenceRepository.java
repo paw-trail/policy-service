@@ -25,6 +25,15 @@ public interface PolicyEvidenceRepository {
     List<PolicyEvidence> findByPlaceId(UUID placeId);
 
     /**
+     * 여러 장소의 근거를 한 번에 가져옵니다.
+     *
+     * batch 조회가 부르는 경로입니다.
+     * 장소마다 따로 물으면 목록 하나에 조회가 수백 번 나갑니다.
+     * idx_policy_evidence_place(place_id, field_name) 의 앞 칸으로 찾습니다.
+     */
+    List<PolicyEvidence> findByPlaceIds(List<UUID> placeIds);
+
+    /**
      * 한 소스가 남긴 근거를 지웁니다.
      *
      * 재추출로 근거가 달라지면 갈아 끼웁니다.
