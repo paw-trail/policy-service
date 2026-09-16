@@ -24,10 +24,11 @@ import java.util.List;
  * 그래서 어느 칸에도 필수를 걸지 않고 원시 타입을 쓰지 않습니다.
  * extract 가 원문에서 못 찾은 칸은 비워서 보냅니다.
  *
- * <b>조건을 하나 더할 때 고칠 곳이 넷입니다.</b>
- * 마이그레이션, PolicyFields, FieldSpec, 그리고 여기입니다.
+ * <b>조건을 하나 더할 때 고칠 곳이 다섯입니다.</b>
+ * 마이그레이션, PolicyFields, FieldSpec, 여기, 그리고 batch 응답의 PolicyFieldsOutput 입니다.
  * 여기를 빠뜨리면 컴파일은 통과하고 그 칸만 조용히 안 들어오므로,
  * 적재 테스트에서 스무 칸이 다 찬 요청을 보내 저장된 값을 대조합니다.
+ * 나가는 쪽도 같아서 batch 테스트가 스무 칸이 다 찬 행을 읽어 응답을 대조합니다.
  */
 public record PolicyFieldsRequest(
 

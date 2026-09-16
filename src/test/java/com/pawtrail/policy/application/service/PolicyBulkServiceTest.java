@@ -22,6 +22,8 @@ import com.pawtrail.policy.presentation.request.BulkUpsertRequest;
 import com.pawtrail.policy.presentation.request.ConflictRequest;
 import com.pawtrail.policy.presentation.request.EvidenceRequest;
 import com.pawtrail.policy.presentation.request.PolicyFieldsRequest;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -62,6 +64,11 @@ class PolicyBulkServiceTest extends IntegrationTestSupport {
 
     @Autowired
     private PolicyConflictRepository policyConflictRepository;
+
+    // 영속성 컨텍스트를 비울 때만 씀
+    // 같은 트랜잭션 안에서 다시 읽으면 캐시된 객체가 돌아와 jsonb 를 거치지 않음
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Test
     @DisplayName("조건 스무 칸이 빠짐없이 저장된다")
@@ -112,6 +119,83 @@ class PolicyBulkServiceTest extends IntegrationTestSupport {
         assertThat(policy.getFields().getScope()).isEqualTo(Scope.PARTIAL);
         assertThat(policy.getPolicyVersion()).isEqualTo(1);
         assertThat(policy.getSourcePriority()).isEqualTo(SourceType.PET_TOUR);
+    }
+
+    @Test
+    @DisplayName("적재하면 칸별 승자가 함께 저장된다")
+    void 칸별_승자가_저장된다() {
+        UUID placeId = UUID.randomUUID();
+        policyBulkService.upsert(request(
+                item(placeId, SourceType.PET_TOUR,
+                        PolicyFieldsRequestFixture.scope(Scope.PARTIAL)),
+                item(placeId, SourceType.GOCAMPING,
+                        PolicyFieldsRequestFixture.sizeRule(SizeRule.SMALL_ONLY))));
+
+        // 비우고 다시 읽어 jsonb 를 한 바퀴 돌림
+        entityManager.flush();
+        entityManager.clear();
+
+        PetPolicy policy = petPolicyRepository.findByPlaceId(placeId).orElseThrow();
+        assertThat(policy.sourcesOf("scope")).containsExactly(SourceType.PET_TOUR);
+        assertThat(policy.sourcesOf("sizeRule")).containsExactly(SourceType.GOCAMPING);
+        assertThat(policy.sourcesOf("indoorAllowed")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("승자만 바뀐 재병합은 판을 올리지 않지만 승자는 새로 적힌다")
+    void 승자만_바뀌면_판은_그대로다() {
+        // 공사가 이미 소스로 있고, 고캠핑이 채우던 칸을 같은 값으로 새로 채우는 경우임
+        // 사용자에게 보이는 값이 같아 알림 대상이 아니지만 보여 줄 근거는 공사 것으로 바뀌어야 함
+        //
+        // * 공사가 새로 들어오는 경우는 이 검사가 아님
+        //   그때는 최상위 티어(sourcePriority)가 바뀌어 판이 오름
+        UUID placeId = UUID.randomUUID();
+        policyBulkService.upsert(request(
+                item(placeId, SourceType.PET_TOUR,
+                        PolicyFieldsRequestFixture.scope(Scope.PARTIAL)),
+                item(placeId, SourceType.GOCAMPING,
+                        PolicyFieldsRequestFixture.scopeAndIndoor(null, false))));
+
+        policyBulkService.upsert(request(
+                item(placeId, SourceType.PET_TOUR,
+                        PolicyFieldsRequestFixture.scopeAndIndoor(Scope.PARTIAL, false))));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        PetPolicy policy = petPolicyRepository.findByPlaceId(placeId).orElseThrow();
+        assertThat(policy.getFields().getIndoorAllowed()).isFalse();
+        assertThat(policy.getPolicyVersion()).isEqualTo(1);
+        assertThat(policy.sourcesOf("indoorAllowed")).containsExactly(SourceType.PET_TOUR);
+    }
+
+    @Test
+    @DisplayName("스무 칸이 모두 비어 있는 행을 다시 읽어도 병합이 멈추지 않는다")
+    void 빈_행을_다시_읽어도_병합된다() {
+        // 하이버네이트는 임베디드의 컬럼이 전부 NULL 이면 값 객체를 null 로 읽음
+        // extract 가 조건을 못 찾은 원문을 빈 행으로 보내면 그 행이 그렇게 되고
+        // 같은 장소에 다른 소스가 들어와 재병합할 때 그 행을 다시 읽음
+        //
+        // * 한 트랜잭션 안에서는 저장한 객체가 그대로 돌아와 이 문제가 안 보임
+        //   그래서 사이에 영속성 컨텍스트를 비워 다른 트랜잭션에서 읽는 것과 같게 만듦
+        UUID placeId = UUID.randomUUID();
+        policyBulkService.upsert(request(
+                item(placeId, SourceType.PET_TOUR, PolicyFieldsRequestFixture.empty())));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        policyBulkService.upsert(request(
+                item(placeId, SourceType.GOCAMPING,
+                        PolicyFieldsRequestFixture.sizeRule(SizeRule.SMALL_ONLY))));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        PetPolicy policy = petPolicyRepository.findByPlaceId(placeId).orElseThrow();
+        assertThat(policy.getFields().getSizeRule()).isEqualTo(SizeRule.SMALL_ONLY);
+        assertThat(policy.getPolicyVersion()).isEqualTo(2);
+        assertThat(policy.sourcesOf("sizeRule")).containsExactly(SourceType.GOCAMPING);
     }
 
     @Test
@@ -302,8 +386,10 @@ class PolicyBulkServiceTest extends IntegrationTestSupport {
         assertThat(policyConflictRepository.findByPlaceId(first)).isEmpty();
     }
 
+    // 모델명은 비움 — 아래 항목이 전부 규칙 파싱(RULE)이라 태운 모델이 없음
+    // extract 의 모델은 아직 정해진 적이 없어 이름을 지어 넣지 않음
     private static BulkUpsertRequest request(BulkItemRequest... items) {
-        return new BulkUpsertRequest("qwen3-30b", "v1", LocalDateTime.now(), List.of(items));
+        return new BulkUpsertRequest(null, "v1", LocalDateTime.now(), List.of(items));
     }
 
     private static BulkItemRequest item(UUID placeId, SourceType source,
@@ -337,6 +423,12 @@ class PolicyBulkServiceTest extends IntegrationTestSupport {
      */
     private static final class PolicyFieldsRequestFixture {
 
+        private static PolicyFieldsRequest empty() {
+            return new PolicyFieldsRequest(null, null, null, null, null,
+                    null, null, null, null, null, null, null,
+                    null, null, null, null, null, null, null, null);
+        }
+
         private static PolicyFieldsRequest scope(Scope scope) {
             return new PolicyFieldsRequest(scope, null, null, null, null,
                     null, null, null, null, null, null, null,
@@ -346,6 +438,12 @@ class PolicyBulkServiceTest extends IntegrationTestSupport {
         private static PolicyFieldsRequest sizeRule(SizeRule sizeRule) {
             return new PolicyFieldsRequest(null, null, null, null, null,
                     null, null, null, sizeRule, null, null, null,
+                    null, null, null, null, null, null, null, null);
+        }
+
+        private static PolicyFieldsRequest scopeAndIndoor(Scope scope, Boolean indoorAllowed) {
+            return new PolicyFieldsRequest(scope, null, null, indoorAllowed, null,
+                    null, null, null, null, null, null, null,
                     null, null, null, null, null, null, null, null);
         }
     }

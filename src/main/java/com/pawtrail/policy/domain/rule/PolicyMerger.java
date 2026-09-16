@@ -30,6 +30,16 @@ import java.util.Map;
  * ③ 이 필드 단위인 것은 소스마다 채우는 칸이 다르기 때문입니다.
  * 한 소스를 통째로 쓰면 나머지가 채웠을 칸이 전부 비고, 비어 있는 값은 "정보 없음" 이라
  * 판정이 UNKNOWN 으로 떨어집니다. 가진 근거를 버려서 모른다고 답하는 셈입니다.
+ *
+ * <b>칸마다 누가 이겼는지도 함께 적습니다.</b>
+ * batch 조회가 그것으로 근거를 거릅니다. 근거 표는 소스마다 제 근거를 가지므로
+ * 병합에서 진 소스의 근거도 남아 있고, 칸 이름으로만 고르면 정정한 값 옆에
+ * 옛 공공 문구가 출처로 뜹니다.
+ * <pre>
+ * ①② 정정 행이 이기면   스무 칸 전부 그 소스
+ * ③ 값 칸               처음 값을 말한 소스
+ * ③ 목록 칸             합집합을 쌓을 때 새 원소를 하나라도 보탠 소스
+ * </pre>
  */
 public final class PolicyMerger {
 
@@ -88,7 +98,24 @@ public final class PolicyMerger {
      * 정정 이력이 before 와 after 를 담고 있고, 원재료 표에 공공 행이 그대로 남습니다.
      */
     private static MergeResult single(PetPolicySource source) {
-        return new MergeResult(source.getFields(), false, source.getSource(), List.of());
+        return new MergeResult(source.getFields(), false, source.getSource(), List.of(),
+                allFieldsFrom(source.getSource()));
+    }
+
+    /**
+     * 스무 칸 전부를 한 소스가 이긴 것으로 적습니다.
+     *
+     * 값이 비어 있는 칸도 적습니다.
+     * 정정 행의 빈 칸은 "안 건드린 칸" 이 아니라 "정보 없음으로 판단한 칸" 이라
+     * 그 판단의 주인도 그 행이기 때문입니다.
+     * 이렇게 적어 두어야 batch 가 그 칸의 공공 근거를 내보내지 않습니다.
+     */
+    private static Map<String, List<SourceType>> allFieldsFrom(SourceType source) {
+        Map<String, List<SourceType>> fieldSources = new LinkedHashMap<>();
+        for (FieldSpec<?> spec : FieldSpec.ALL) {
+            fieldSources.put(spec.name(), List.of(source));
+        }
+        return fieldSources;
     }
 
     /**
@@ -106,16 +133,18 @@ public final class PolicyMerger {
 
         PolicyFields.PolicyFieldsBuilder builder = PolicyFields.builder();
         List<MergeResult.FieldConflict> conflicts = new ArrayList<>();
+        Map<String, List<SourceType>> fieldSources = new LinkedHashMap<>();
 
         for (FieldSpec<?> spec : FieldSpec.ALL) {
-            mergeField(spec, ordered, builder, conflicts);
+            mergeField(spec, ordered, builder, conflicts, fieldSources);
         }
 
         return new MergeResult(
                 builder.build(),
                 !conflicts.isEmpty(),
                 ordered.getFirst().getSource(),
-                conflicts
+                conflicts,
+                fieldSources
         );
     }
 
@@ -129,12 +158,13 @@ public final class PolicyMerger {
     private static <T> void mergeField(FieldSpec<T> spec,
                                        List<PetPolicySource> ordered,
                                        PolicyFields.PolicyFieldsBuilder builder,
-                                       List<MergeResult.FieldConflict> conflicts) {
-        Map<String, T> stated = new LinkedHashMap<>();
+                                       List<MergeResult.FieldConflict> conflicts,
+                                       Map<String, List<SourceType>> fieldSources) {
+        Map<SourceType, T> stated = new LinkedHashMap<>();
         for (PetPolicySource source : ordered) {
             T value = spec.getter().apply(source.getFields());
             if (isStated(value)) {
-                stated.put(source.getSource().name(), value);
+                stated.put(source.getSource(), value);
             }
         }
 
@@ -143,13 +173,14 @@ public final class PolicyMerger {
         }
 
         if (spec.list()) {
-            mergeListField(spec, stated, builder, conflicts);
+            mergeListField(spec, stated, builder, conflicts, fieldSources);
             return;
         }
 
         // 순서가 우선순위 순이라 첫 값이 이김
-        T chosen = stated.values().iterator().next();
-        spec.setter().accept(builder, chosen);
+        Map.Entry<SourceType, T> chosen = stated.entrySet().iterator().next();
+        spec.setter().accept(builder, chosen.getValue());
+        fieldSources.put(spec.name(), List.of(chosen.getKey()));
 
         if (hasDifferentValue(spec, stated.values())) {
             conflicts.add(new MergeResult.FieldConflict(spec.name(), toValueMap(stated)));
@@ -187,26 +218,49 @@ public final class PolicyMerger {
      *
      * 서로 겹치지 않는 원소가 양쪽에 있을 때만 충돌입니다.
      * 그때는 실제로 다른 구역을 지목한 것입니다.
+     *
+     * <b>승자는 합집합을 쌓는 이 순회에서 함께 정합니다.</b>
+     * 우선순위 순으로 원소를 더해 가며 새 원소를 하나라도 보탠 소스만 승자입니다.
+     * 값 칸이 "처음 말한 소스만" 인 것과 같은 원리입니다.
+     * <pre>
+     * 공사 ["실내", "잔디"] · 고캠핑 ["실내"]   승자 공사      고캠핑은 새로 보탠 것이 없음
+     * 공사 [] · 고캠핑 ["실내"]               승자 고캠핑    빈 목록은 "해당 없음" 이라 보탠 것이 아님
+     * 공사 [] · 고캠핑 []                    승자 둘 다     최종 값인 빈 목록을 함께 만듦
+     * </pre>
+     * 보탠 것이 없는 소스를 승자로 두면 batch 가 그 소스의 근거를 내보냅니다.
+     * 빈 목록을 말한 소스라면 최종 값 ["실내"] 옆에 "제한 구역 없음" 이 붙어 반대 말을 하게 됩니다.
      */
     @SuppressWarnings("unchecked")
     private static <T> void mergeListField(FieldSpec<T> spec,
-                                           Map<String, T> stated,
+                                           Map<SourceType, T> stated,
                                            PolicyFields.PolicyFieldsBuilder builder,
-                                           List<MergeResult.FieldConflict> conflicts) {
+                                           List<MergeResult.FieldConflict> conflicts,
+                                           Map<String, List<SourceType>> fieldSources) {
         List<List<String>> lists = stated.values().stream()
                 .map(value -> (List<String>) value)
                 .toList();
 
         // 순서를 지켜 합침 — 관리자 화면이 이 순서로 펼쳐 보여줌
+        // 합치면서 새 원소를 하나라도 더한 소스를 승자로 모음
         List<String> union = new ArrayList<>();
-        for (List<String> list : lists) {
-            for (String item : list) {
+        List<SourceType> contributors = new ArrayList<>();
+        for (Map.Entry<SourceType, T> entry : stated.entrySet()) {
+            boolean added = false;
+            for (String item : (List<String>) entry.getValue()) {
                 if (!union.contains(item)) {
                     union.add(item);
+                    added = true;
                 }
+            }
+            if (added) {
+                contributors.add(entry.getKey());
             }
         }
         spec.setter().accept(builder, (T) union);
+
+        // 모두 빈 목록이면 보탠 소스가 없으나 최종 값을 함께 만든 것이라 전부 승자임
+        fieldSources.put(spec.name(),
+                union.isEmpty() ? List.copyOf(stated.keySet()) : contributors);
 
         if (hasDisjointPair(lists)) {
             conflicts.add(new MergeResult.FieldConflict(spec.name(), toValueMap(stated)));
@@ -248,10 +302,11 @@ public final class PolicyMerger {
      *
      * 값을 그대로 담습니다.
      * jsonb 로 직렬화될 때 문자열·숫자·불리언·목록이 각자 형태를 유지합니다.
+     * 키는 소스 이름입니다. 우선순위 순서를 그대로 지킵니다.
      */
-    private static <T> Map<String, Object> toValueMap(Map<String, T> stated) {
+    private static <T> Map<String, Object> toValueMap(Map<SourceType, T> stated) {
         Map<String, Object> values = new LinkedHashMap<>();
-        stated.forEach(values::put);
+        stated.forEach((source, value) -> values.put(source.name(), value));
         return values;
     }
 

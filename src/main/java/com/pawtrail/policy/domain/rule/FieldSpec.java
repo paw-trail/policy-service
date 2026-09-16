@@ -2,7 +2,9 @@ package com.pawtrail.policy.domain.rule;
 
 import com.pawtrail.policy.domain.model.PolicyFields;
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
@@ -20,7 +22,12 @@ import java.util.function.Function;
  * 새 조건이 생기면 아래 목록에 한 줄을 더하면 되고, 빠뜨리면 그 칸이 아예 병합되지 않아
  * 테스트에서 바로 드러납니다.
  *
- * @param name   pet_policy 의 컬럼 이름. 충돌 기록과 changedFields 에 그대로 쓰임
+ * <b>name 이 조건 이름의 기준입니다.</b>
+ * bulk 요청의 fields · 근거의 fieldName · 충돌의 fieldName · batch 응답이 전부 이 이름을 씁니다.
+ * DB 컬럼 이름(max_weight_kg)이 아니라 camelCase(maxWeightKg)입니다.
+ * 컬럼 이름을 계약에 쓰면 컬럼을 바꾸는 순간 API 가 깨지기 때문입니다.
+ *
+ * @param name   조건 이름. camelCase 이며 요청 · 근거 · 충돌 · 응답이 모두 이 이름을 씀
  * @param getter 조건 한 벌에서 이 칸의 값을 꺼냄
  * @param setter 빌더에 이 칸의 값을 넣음
  * @param list   목록형인지. 목록은 포함 관계를 보고 합집합을 취하므로 규칙이 다름
@@ -121,4 +128,44 @@ public record FieldSpec<T>(
             of("advanceInquiry", PolicyFields::getAdvanceInquiry,
                     PolicyFields.PolicyFieldsBuilder::advanceInquiry)
     );
+
+    /**
+     * 조건 이름에서 위 목록의 순서로 가는 표입니다.
+     *
+     * ALL 보다 아래에 있어야 합니다.
+     * 정적 필드는 적힌 순서대로 초기화되므로 위에 두면 ALL 이 아직 비어 있습니다.
+     */
+    private static final Map<String, Integer> ORDER = indexByName();
+
+    /**
+     * 조건 스무 칸 중 하나의 이름인지 봅니다.
+     *
+     * bulk 요청이 근거와 소스 내 충돌의 이름을 이것으로 막습니다.
+     * 막지 않으면 오타가 그대로 저장되고, batch 가 조건과 근거를 이름으로 이을 때
+     * 오류 없이 그 칸의 근거만 사라집니다.
+     */
+    public static boolean isKnownName(String name) {
+        return name != null && ORDER.containsKey(name);
+    }
+
+    /**
+     * 그 조건이 목록에서 몇 번째인지입니다.
+     *
+     * batch 가 근거를 조건 순서로 늘어놓을 때 씁니다.
+     * 모르는 이름은 맨 뒤로 보냅니다.
+     * bulk 가 막으므로 새로 쌓이지는 않으나, 막기 전에 들어간 행이 있을 수 있어
+     * 예외를 내지 않고 뒤에 둡니다.
+     */
+    public static int orderOf(String name) {
+        Integer order = name == null ? null : ORDER.get(name);
+        return order == null ? Integer.MAX_VALUE : order;
+    }
+
+    private static Map<String, Integer> indexByName() {
+        Map<String, Integer> order = new LinkedHashMap<>();
+        for (int i = 0; i < ALL.size(); i++) {
+            order.put(ALL.get(i).name(), i);
+        }
+        return Map.copyOf(order);
+    }
 }
