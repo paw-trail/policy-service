@@ -1,5 +1,6 @@
 package com.pawtrail.policy.infrastructure.persistence;
 
+import com.pawtrail.policy.domain.enums.SourceType;
 import com.pawtrail.policy.domain.model.PolicyEvidence;
 import com.pawtrail.policy.domain.repository.PolicyEvidenceRepository;
 import com.pawtrail.policy.infrastructure.persistence.jpa.PolicyEvidenceJpaRepository;
@@ -25,5 +26,10 @@ public class PolicyEvidenceRepositoryImpl implements PolicyEvidenceRepository {
     @Override
     public List<PolicyEvidence> findByPlaceId(UUID placeId) {
         return policyEvidenceJpaRepository.findByPlaceId(placeId);
+    }
+
+    @Override
+    public int deleteByPlaceIdAndSource(UUID placeId, SourceType source) {
+        return policyEvidenceJpaRepository.deleteByPlaceIdAndSource(placeId, source);
     }
 }

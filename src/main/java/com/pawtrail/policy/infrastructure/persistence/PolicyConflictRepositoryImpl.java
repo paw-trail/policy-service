@@ -1,5 +1,6 @@
 package com.pawtrail.policy.infrastructure.persistence;
 
+import com.pawtrail.policy.domain.enums.SourceType;
 import com.pawtrail.policy.domain.model.PolicyConflict;
 import com.pawtrail.policy.domain.repository.PolicyConflictRepository;
 import com.pawtrail.policy.infrastructure.persistence.jpa.PolicyConflictJpaRepository;
@@ -25,5 +26,15 @@ public class PolicyConflictRepositoryImpl implements PolicyConflictRepository {
     @Override
     public List<PolicyConflict> findByPlaceId(UUID placeId) {
         return policyConflictJpaRepository.findByPlaceId(placeId);
+    }
+
+    @Override
+    public int deleteIntraSource(UUID placeId, SourceType source) {
+        return policyConflictJpaRepository.deleteIntraSource(placeId, source);
+    }
+
+    @Override
+    public int deleteCrossSource(UUID placeId) {
+        return policyConflictJpaRepository.deleteCrossSource(placeId);
     }
 }

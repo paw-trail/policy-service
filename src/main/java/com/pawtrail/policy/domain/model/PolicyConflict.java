@@ -2,6 +2,7 @@ package com.pawtrail.policy.domain.model;
 
 import com.pawtrail.common.entity.BaseEntity;
 import com.pawtrail.policy.domain.enums.ConflictType;
+import com.pawtrail.policy.domain.enums.SourceType;
 import com.pawtrail.policy.domain.support.JsonSnapshot;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -46,6 +47,19 @@ public class PolicyConflict extends BaseEntity {
     @Column(name = "field_name", nullable = false, updatable = false, length = 40)
     private String fieldName;
 
+    // 어느 소스의 것인지임
+    //
+    // INTRA_SOURCE 면 그 소스이고 CROSS_SOURCE 는 null 임
+    // 소스 여럿에 걸친 어긋남이라 한 값으로 담을 수 없음
+    //
+    // 이 칸이 필요한 이유는 재추출 때문임
+    // extract 가 소스별로 보내므로 그 소스의 것만 갈아 끼워야 하는데
+    // 담을 칸이 없으면 장소 전체를 지우게 되어
+    // 이번 요청에 없는 다른 소스의 기록까지 사라짐
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source", updatable = false, length = 20)
+    private SourceType source;
+
     // 소스별로 무엇이라고 했는지임
     //
     // 필드마다 타입이 달라(boolean · numeric · text[]) 컬럼으로는 못 담음
@@ -75,11 +89,12 @@ public class PolicyConflict extends BaseEntity {
     private boolean resolved;
 
     private PolicyConflict(UUID placeId, String fieldName, Map<String, Object> sourceValues,
-                           ConflictType conflictType) {
+                           ConflictType conflictType, SourceType source) {
         this.placeId = placeId;
         this.fieldName = fieldName;
         this.sourceValues = JsonSnapshot.deepCopy(sourceValues);
         this.conflictType = conflictType;
+        this.source = source;
         this.detectedAt = LocalDateTime.now();
         this.resolved = false;
     }
@@ -99,7 +114,8 @@ public class PolicyConflict extends BaseEntity {
         if (sourceValues.size() < 2) {
             throw new IllegalArgumentException("소스 간 충돌은 값이 둘 이상이어야 합니다.");
         }
-        return new PolicyConflict(placeId, fieldName, sourceValues, ConflictType.CROSS_SOURCE);
+        return new PolicyConflict(placeId, fieldName, sourceValues,
+                ConflictType.CROSS_SOURCE, null);
     }
 
     /**
@@ -109,10 +125,14 @@ public class PolicyConflict extends BaseEntity {
      * 필드값과 본문이 서로 다른 말을 하는 경우이며 고캠핑에서 28건 확인됐습니다.
      * policy 는 한 소스의 조건 한 벌만 받으므로 원본의 자기모순을 알 방법이 없습니다.
      */
-    public static PolicyConflict intraSource(UUID placeId, String fieldName,
+    public static PolicyConflict intraSource(UUID placeId, SourceType source, String fieldName,
                                              Map<String, Object> sourceValues) {
         validate(placeId, fieldName, sourceValues);
-        return new PolicyConflict(placeId, fieldName, sourceValues, ConflictType.INTRA_SOURCE);
+        if (source == null) {
+            throw new IllegalArgumentException("소스 내 충돌은 어느 소스인지가 필요합니다.");
+        }
+        return new PolicyConflict(placeId, fieldName, sourceValues,
+                ConflictType.INTRA_SOURCE, source);
     }
 
     /**
