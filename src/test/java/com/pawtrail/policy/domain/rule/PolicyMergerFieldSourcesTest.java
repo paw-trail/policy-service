@@ -80,8 +80,10 @@ class PolicyMergerFieldSourcesTest {
     }
 
     @Test
-    @DisplayName("목록 칸은 원소를 보탠 소스가 전부 우선순위 순으로 이긴다")
+    @DisplayName("목록 칸은 새 원소를 보탠 소스가 우선순위 순으로 이긴다")
     void 목록_칸은_보탠_소스가_전부_이긴다() {
+        // 넣는 순서를 뒤집음 — 공사가 먼저 "실내" 를, 문화정보원이 뒤에서 "잔디" 를 보탬
+        // 문화정보원은 "실내" 가 겹치지만 "잔디" 를 새로 보탰으므로 승자임
         MergeResult result = PolicyMerger.merge(List.of(
                 extracted(SourceType.CULTURE_CSV, PolicyFields.builder()
                         .excludedZones(List.of("실내", "잔디")).build()),
@@ -90,6 +92,22 @@ class PolicyMergerFieldSourcesTest {
 
         assertThat(result.fieldSources().get("excludedZones"))
                 .containsExactly(SourceType.PET_TOUR, SourceType.CULTURE_CSV);
+    }
+
+    @Test
+    @DisplayName("뒤 소스가 이미 나온 원소만 말했으면 승자가 아니다")
+    void 이미_나온_원소만_말하면_승자가_아니다() {
+        // 비어 있지 않은 목록을 말했다고 승자로 두면 고캠핑이 새로 보탠 것이 없는데도 승자가 되어
+        // batch 가 고캠핑의 구역 근거까지 내보냄 (PR #8 리뷰)
+        // 값 칸에서 같은 값을 뒤에서 한 번 더 말한 소스가 승자가 아닌 것과 같은 원리임
+        MergeResult result = PolicyMerger.merge(List.of(
+                extracted(SourceType.PET_TOUR, PolicyFields.builder()
+                        .excludedZones(List.of("실내", "잔디")).build()),
+                extracted(SourceType.GOCAMPING, PolicyFields.builder()
+                        .excludedZones(List.of("실내")).build())));
+
+        assertThat(result.fields().getExcludedZones()).containsExactly("실내", "잔디");
+        assertThat(result.fieldSources().get("excludedZones")).containsExactly(SourceType.PET_TOUR);
     }
 
     @Test

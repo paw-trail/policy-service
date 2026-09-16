@@ -188,6 +188,30 @@ class PolicyQueryServiceTest extends IntegrationTestSupport {
     }
 
     @Test
+    @DisplayName("목록 칸에서 새 원소를 보태지 않은 소스의 근거는 담기지 않는다")
+    void 보태지_않은_소스의_근거는_없다() {
+        // 고캠핑은 목록을 말했으나 공사가 이미 낸 "실내" 뿐이라 합집합에 보탠 것이 없음
+        // 그 근거가 나가면 최종 값을 만들지 않은 소스가 출처로 뜸 (PR #8 리뷰)
+        UUID placeId = UUID.randomUUID();
+        policyBulkService.upsert(request(
+                item(placeId, SourceType.PET_TOUR,
+                        fieldsOf(PolicyFields.builder()
+                                .excludedZones(List.of("실내", "잔디")).build()),
+                        List.of(new EvidenceRequest("excludedZones", "etcAcmpyInfo", null, "공사 구역 근거"))),
+                item(placeId, SourceType.GOCAMPING,
+                        fieldsOf(PolicyFields.builder()
+                                .excludedZones(List.of("실내")).build()),
+                        List.of(new EvidenceRequest("excludedZones", "animalCmgCl", null, "고캠핑 구역 근거")))));
+        clear();
+
+        PolicyBatchOutput output = policyQueryService.findByPlaceIds(List.of(placeId)).getFirst();
+
+        assertThat(output.fields().excludedZones()).containsExactly("실내", "잔디");
+        assertThat(output.evidence()).extracting(EvidenceOutput::segmentText)
+                .containsExactly("공사 구역 근거");
+    }
+
+    @Test
     @DisplayName("정정 행이 이긴 장소는 공공 소스의 근거를 담지 않는다")
     void 정정_행이_이기면_공공_근거가_없다() {
         // 칸 이름으로만 고르면 관리자가 고친 값 옆에 공사 문구가 출처로 뜸

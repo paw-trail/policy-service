@@ -38,7 +38,7 @@ import java.util.Map;
  * <pre>
  * ①② 정정 행이 이기면   스무 칸 전부 그 소스
  * ③ 값 칸               처음 값을 말한 소스
- * ③ 목록 칸             합집합에 원소를 보탠 소스 전부
+ * ③ 목록 칸             합집합을 쌓을 때 새 원소를 하나라도 보탠 소스
  * </pre>
  */
 public final class PolicyMerger {
@@ -218,6 +218,17 @@ public final class PolicyMerger {
      *
      * 서로 겹치지 않는 원소가 양쪽에 있을 때만 충돌입니다.
      * 그때는 실제로 다른 구역을 지목한 것입니다.
+     *
+     * <b>승자는 합집합을 쌓는 이 순회에서 함께 정합니다.</b>
+     * 우선순위 순으로 원소를 더해 가며 새 원소를 하나라도 보탠 소스만 승자입니다.
+     * 값 칸이 "처음 말한 소스만" 인 것과 같은 원리입니다.
+     * <pre>
+     * 공사 ["실내", "잔디"] · 고캠핑 ["실내"]   승자 공사      고캠핑은 새로 보탠 것이 없음
+     * 공사 [] · 고캠핑 ["실내"]               승자 고캠핑    빈 목록은 "해당 없음" 이라 보탠 것이 아님
+     * 공사 [] · 고캠핑 []                    승자 둘 다     최종 값인 빈 목록을 함께 만듦
+     * </pre>
+     * 보탠 것이 없는 소스를 승자로 두면 batch 가 그 소스의 근거를 내보냅니다.
+     * 빈 목록을 말한 소스라면 최종 값 ["실내"] 옆에 "제한 구역 없음" 이 붙어 반대 말을 하게 됩니다.
      */
     @SuppressWarnings("unchecked")
     private static <T> void mergeListField(FieldSpec<T> spec,
@@ -230,46 +241,30 @@ public final class PolicyMerger {
                 .toList();
 
         // 순서를 지켜 합침 — 관리자 화면이 이 순서로 펼쳐 보여줌
+        // 합치면서 새 원소를 하나라도 더한 소스를 승자로 모음
         List<String> union = new ArrayList<>();
-        for (List<String> list : lists) {
-            for (String item : list) {
+        List<SourceType> contributors = new ArrayList<>();
+        for (Map.Entry<SourceType, T> entry : stated.entrySet()) {
+            boolean added = false;
+            for (String item : (List<String>) entry.getValue()) {
                 if (!union.contains(item)) {
                     union.add(item);
+                    added = true;
                 }
+            }
+            if (added) {
+                contributors.add(entry.getKey());
             }
         }
         spec.setter().accept(builder, (T) union);
-        fieldSources.put(spec.name(), contributorsOf(stated, union));
+
+        // 모두 빈 목록이면 보탠 소스가 없으나 최종 값을 함께 만든 것이라 전부 승자임
+        fieldSources.put(spec.name(),
+                union.isEmpty() ? List.copyOf(stated.keySet()) : contributors);
 
         if (hasDisjointPair(lists)) {
             conflicts.add(new MergeResult.FieldConflict(spec.name(), toValueMap(stated)));
         }
-    }
-
-    /**
-     * 목록 칸의 승자를 고릅니다.
-     *
-     * 합집합에 원소를 보탠 소스가 승자입니다.
-     * 빈 목록을 말한 소스는 "해당 없음" 이라고 말한 것이라, 다른 소스가 원소를 보태
-     * 합집합이 비지 않았다면 최종 값을 만든 쪽이 아닙니다.
-     * 그 근거("제한 구역 없음")를 함께 보이면 최종 값과 반대 말을 하는 근거가 붙습니다.
-     *
-     * 모두가 빈 목록을 말했으면 모두가 승자입니다.
-     * 최종 값인 빈 목록을 그 소스들이 함께 만든 것이기 때문입니다.
-     */
-    @SuppressWarnings("unchecked")
-    private static <T> List<SourceType> contributorsOf(Map<SourceType, T> stated,
-                                                       List<String> union) {
-        if (union.isEmpty()) {
-            return List.copyOf(stated.keySet());
-        }
-        List<SourceType> contributors = new ArrayList<>();
-        stated.forEach((source, value) -> {
-            if (!((List<String>) value).isEmpty()) {
-                contributors.add(source);
-            }
-        });
-        return contributors;
     }
 
     /**
