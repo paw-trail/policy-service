@@ -26,7 +26,6 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -276,21 +275,31 @@ class PolicyBulkServiceTest extends IntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("거부되면 앞쪽 항목도 저장되지 않는다")
+    @DisplayName("거부되면 앞쪽 항목이 네 표 어디에도 남지 않는다")
     void 거부되면_아무것도_안_들어간다() {
-        // 청크를 돌기 전에 미리 훑으므로 앞 항목이 커밋되지 않음
+        // 지금은 청크를 돌기 전에 미리 훑으므로 앞 항목이 저장될 일이 없음
+        //
+        // 그 전제를 검사에 적어 두는 이유는 검증 위치가 옮겨질 수 있기 때문임
+        // 항목별 저장 뒤로 옮기면 앞 항목이 부분 저장된 채 예외가 나는데
+        // 병합 결과만 보면 그것을 못 잡음
+        // 한 트랜잭션이 보장하는 것은 네 표에 아무것도 안 들어가는 것임
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
 
         assertThatThrownBy(() -> policyBulkService.upsert(request(
                 item(first, SourceType.PET_TOUR,
-                        PolicyFieldsRequestFixture.scope(Scope.PARTIAL)),
+                        PolicyFieldsRequestFixture.scope(Scope.PARTIAL),
+                        List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "일부구역")),
+                        List.of(new ConflictRequest("scope",
+                                Map.of("field", "Y", "text", "불가")))),
                 item(second, SourceType.OWNER,
                         PolicyFieldsRequestFixture.scope(Scope.ALL_AREA)))))
                 .isInstanceOf(CustomException.class);
 
-        Optional<PetPolicy> policy = petPolicyRepository.findByPlaceId(first);
-        assertThat(policy).isEmpty();
+        assertThat(petPolicyRepository.findByPlaceId(first)).isEmpty();
+        assertThat(petPolicySourceRepository.findByPlaceId(first)).isEmpty();
+        assertThat(policyEvidenceRepository.findByPlaceId(first)).isEmpty();
+        assertThat(policyConflictRepository.findByPlaceId(first)).isEmpty();
     }
 
     private static BulkUpsertRequest request(BulkItemRequest... items) {
