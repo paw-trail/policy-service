@@ -8,6 +8,7 @@ import com.pawtrail.policy.domain.model.PetPolicySource;
 import com.pawtrail.policy.domain.model.PolicyConflict;
 import com.pawtrail.policy.domain.model.PolicyEvidence;
 import com.pawtrail.policy.domain.repository.PetPolicySourceRepository;
+import com.pawtrail.policy.domain.repository.PlaceLockRepository;
 import com.pawtrail.policy.domain.repository.PolicyConflictRepository;
 import com.pawtrail.policy.domain.repository.PolicyEvidenceRepository;
 import com.pawtrail.policy.presentation.request.BulkItemRequest;
@@ -15,10 +16,8 @@ import com.pawtrail.policy.presentation.request.BulkUpsertRequest;
 import com.pawtrail.policy.presentation.request.ConflictRequest;
 import com.pawtrail.policy.presentation.request.EvidenceRequest;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,24 +45,38 @@ public class PolicyBulkService {
     private final PolicyEvidenceRepository policyEvidenceRepository;
     private final PolicyConflictRepository policyConflictRepository;
     private final PolicyMergeService policyMergeService;
+    private final PlaceLockRepository placeLockRepository;
 
     /**
      * 청크 하나를 저장하고 건드린 장소를 다시 합칩니다.
+     *
+     * <b>쓰기 전에 이 청크의 장소를 전부 잠급니다.</b>
+     * 원재료 행을 고치면 근거를 지우는 쿼리가 변경을 먼저 내보내 그 행이 잠깁니다.
+     * 잠금을 재병합 때 잡으면 두 적재가 같은 원재료 행들을 반대 순서로 쓸 때
+     * 장소 잠금에 닿기도 전에 행 잠금끼리 서로를 기다려 교착이 납니다.
+     * 장소를 정렬해 한꺼번에 먼저 잡으면 겹치는 청크는 첫 공통 장소에서 한 줄로 서고,
+     * 한 장소의 쓰기가 전부 그 장소 잠금 안에서 일어납니다.
+     *
+     * 재병합이 같은 잠금을 다시 잡아도 같은 트랜잭션이라 막히지 않습니다.
+     * 잠금은 트랜잭션이 끝날 때 한꺼번에 풀립니다.
      */
     @Transactional
     public BulkUpsertResult upsert(BulkUpsertRequest request) {
         validateSources(request.items());
 
-        Set<UUID> touched = new LinkedHashSet<>();
+        List<UUID> places = request.items().stream()
+                .map(BulkItemRequest::placeId)
+                .distinct()
+                .sorted()
+                .toList();
+        places.forEach(placeLockRepository::lock);
+
         for (BulkItemRequest item : request.items()) {
             save(item, request);
-            touched.add(item.placeId());
         }
 
-        // 장소를 정렬해 잠그는 순서를 고정함
-        // 두 적재가 겹치는 장소를 서로 다른 순서로 잠그면 서로를 기다리며 멈출 수 있음
         int merged = 0;
-        for (UUID placeId : touched.stream().sorted().toList()) {
+        for (UUID placeId : places) {
             policyMergeService.remerge(placeId);
             merged++;
         }
