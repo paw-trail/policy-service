@@ -56,23 +56,42 @@ public class PolicyMergeService {
      * 칸별 승자는 판과 상관없이 늘 새로 적습니다.
      * batch 가 근거를 고르는 기준이라 값이 같아도 승자가 바뀌면 그대로 따라가야 합니다.
      *
+     * <b>has_conflict 는 병합이 찾은 소스 간 어긋남에 소스 내 어긋남을 더합니다.</b>
+     * 소스 내 어긋남은 병합에 참여한 소스의 것만 셉니다.
+     * 소스가 하나뿐인 장소에도 자기모순은 생기는데, 이 플래그가 거짓이면
+     * 장소 상세가 충돌 목록을 부르지 않아 볼 길이 없어집니다.
+     * 반대로 정정 행이 이기면 참여한 소스가 그 행 하나라 공공 소스의 자기모순은 세지 않습니다.
+     * 사람이 확인해 정한 장소에 "확인하세요" 가 계속 뜨지 않게 하려는 것이며,
+     * 소스 간 어긋남을 참여한 티어끼리만 비교하는 것과 같은 기준입니다.
+     *
+     * 소스가 하나도 없고 행도 없으면 아무것도 만들지 않습니다.
+     * 빈 행을 만들면 "조건 행이 없음"(동물병원 · 추출 전)이
+     * "추출했으나 조건이 없음" 으로 바뀌어 batch 에서 빠지던 장소가 빈 조건으로 담깁니다.
+     *
      * @return 병합 결과가 이전과 달라졌는지
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public boolean remerge(UUID placeId) {
         List<PetPolicySource> sources = petPolicySourceRepository.findByPlaceId(placeId);
-        MergeResult result = PolicyMerger.merge(sources);
-
         Optional<PetPolicy> existing = petPolicyRepository.findByPlaceId(placeId);
-        boolean changed = existing.isEmpty() || isChanged(existing.get(), result);
+
+        if (sources.isEmpty() && existing.isEmpty()) {
+            return false;
+        }
+
+        MergeResult result = PolicyMerger.merge(sources);
+        boolean hasConflict = result.hasConflict()
+                || policyConflictRepository.existsIntraSource(placeId, result.participants());
+
+        boolean changed = existing.isEmpty() || isChanged(existing.get(), result, hasConflict);
 
         if (existing.isEmpty()) {
             petPolicyRepository.save(PetPolicy.merged(
-                    placeId, result.fields(), result.hasConflict(), result.sourcePriority(),
+                    placeId, result.fields(), hasConflict, result.sourcePriority(),
                     result.fieldSources()));
         } else {
             existing.get().remerge(
-                    result.fields(), result.hasConflict(), result.sourcePriority(),
+                    result.fields(), hasConflict, result.sourcePriority(),
                     result.fieldSources(), changed);
         }
 
@@ -115,16 +134,16 @@ public class PolicyMergeService {
      *
      * 조건 한 벌과 충돌 여부를 함께 봅니다.
      * 조건이 같아도 어긋남이 생기거나 사라졌으면 화면에 배지가 붙고 떨어지므로
-     * 사용자에게는 달라진 것입니다.
+     * 사용자에게는 달라진 것입니다. 소스 내 어긋남만 새로 생겨도 배지가 바뀌므로 판이 오릅니다.
      *
      * 칸별 승자는 보지 않습니다.
      * 승자만 바뀐 재병합은 사용자에게 보이는 값이 같아 알림 대상이 아닙니다.
      * 다만 batch 가 보여 줄 근거는 바뀌므로, 판을 올릴지는 policy.changed 이슈에서
      * 근거만 바뀐 경우와 함께 봅니다.
      */
-    private boolean isChanged(PetPolicy existing, MergeResult result) {
+    private boolean isChanged(PetPolicy existing, MergeResult result, boolean hasConflict) {
         return hasDifferentFields(existing.getFields(), result.fields())
-                || existing.isHasConflict() != result.hasConflict()
+                || existing.isHasConflict() != hasConflict
                 || existing.getSourcePriority() != result.sourcePriority();
     }
 

@@ -1,10 +1,15 @@
 package com.pawtrail.policy.application.service;
 
+import com.pawtrail.policy.application.dto.output.ConflictOutput;
 import com.pawtrail.policy.application.dto.output.EvidenceOutput;
 import com.pawtrail.policy.application.dto.output.PolicyBatchOutput;
+import com.pawtrail.policy.domain.enums.ConflictType;
+import com.pawtrail.policy.domain.enums.SourceType;
 import com.pawtrail.policy.domain.model.PetPolicy;
+import com.pawtrail.policy.domain.model.PolicyConflict;
 import com.pawtrail.policy.domain.model.PolicyEvidence;
 import com.pawtrail.policy.domain.repository.PetPolicyRepository;
+import com.pawtrail.policy.domain.repository.PolicyConflictRepository;
 import com.pawtrail.policy.domain.repository.PolicyEvidenceRepository;
 import com.pawtrail.policy.domain.rule.FieldSpec;
 import java.util.ArrayList;
@@ -13,6 +18,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -44,8 +50,21 @@ public class PolicyQueryService {
                     .thenComparing(PolicyEvidence::getSegmentIndex,
                             Comparator.nullsFirst(Comparator.<Integer>naturalOrder()));
 
+    /**
+     * 충돌을 늘어놓는 순서입니다.
+     *
+     * 조건 순서 → 소스 간 어긋남 먼저 → 소스 순서입니다.
+     * 소스 간 어긋남은 소스 칸이 비어 있어 같은 조건 안에서 앞에 옵니다.
+     */
+    private static final Comparator<PolicyConflict> CONFLICT_ORDER =
+            Comparator.comparingInt((PolicyConflict conflict) -> FieldSpec.orderOf(conflict.getFieldName()))
+                    .thenComparing(PolicyConflict::getConflictType)
+                    .thenComparing(PolicyConflict::getSource,
+                            Comparator.nullsFirst(Comparator.<SourceType>naturalOrder()));
+
     private final PetPolicyRepository petPolicyRepository;
     private final PolicyEvidenceRepository policyEvidenceRepository;
+    private final PolicyConflictRepository policyConflictRepository;
 
     /**
      * 여러 장소의 조건을 한 번에 돌려줍니다.
@@ -117,6 +136,37 @@ public class PolicyQueryService {
                         .contains(evidence.getSource()))
                 .sorted(EVIDENCE_ORDER)
                 .map(EvidenceOutput::from)
+                .toList();
+    }
+
+    /**
+     * 한 장소의 열린 조건 충돌을 돌려줍니다.
+     *
+     * <b>has_conflict 가 센 것과 같은 집합입니다.</b>
+     * 장소 상세는 hasConflict 가 참일 때만 이 목록을 부르므로, 둘이 어긋나면
+     * 배지가 붙었는데 목록이 비거나 목록이 있는데 배지가 안 붙습니다.
+     * 플래그가 거짓이면 행이 있어도 빈 목록입니다.
+     * 정정 행이 이긴 장소는 병합에 참여한 소스가 그 행 하나라 공공 소스의 소스 내 어긋남을 담지 않습니다.
+     * 그 경우 플래그도 거짓이라 앞에서 이미 빈 목록이 되나, 규칙이 드러나게 거르는 자리를 남깁니다.
+     *
+     * 조건 행이 없어도 404 가 아니라 빈 목록입니다.
+     * 이 서비스는 장소가 있는지 모르며, batch 가 행 없는 장소를 빼는 것과 같은 까닭입니다.
+     */
+    @Transactional(readOnly = true)
+    public List<ConflictOutput> findConflicts(UUID placeId) {
+        Optional<PetPolicy> policy = petPolicyRepository.findByPlaceId(placeId);
+        if (policy.isEmpty() || !policy.get().isHasConflict()) {
+            return List.of();
+        }
+
+        SourceType sourcePriority = policy.get().getSourcePriority();
+        boolean correctionWins = sourcePriority != null && sourcePriority.isCorrection();
+
+        return policyConflictRepository.findByPlaceId(placeId).stream()
+                .filter(conflict -> conflict.getConflictType() == ConflictType.CROSS_SOURCE
+                        || !correctionWins)
+                .sorted(CONFLICT_ORDER)
+                .map(ConflictOutput::from)
                 .toList();
     }
 }

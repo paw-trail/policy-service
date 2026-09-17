@@ -236,7 +236,7 @@ public class PetPolicySource extends BaseEntity {
      * 서로의 갱신 메서드가 먹으면 두 성격이 섞인 행이 만들어집니다.
      */
     public boolean isCorrection() {
-        return source == SourceType.MANUAL || source == SourceType.OWNER;
+        return source.isCorrection();
     }
 
     private static void validate(UUID placeId, SourceType source, PolicyFields fields) {

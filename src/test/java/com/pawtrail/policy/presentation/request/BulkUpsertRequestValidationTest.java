@@ -112,6 +112,33 @@ class BulkUpsertRequestValidationTest {
                 .isEqualTo("items[0].evidence[0].fieldName");
     }
 
+    @Test
+    @DisplayName("소스 내 충돌의 값 키가 field · text 가 아니면 그 충돌을 가리켜 막는다")
+    void 충돌_값_키가_다르면_막힌다() {
+        // 공개 충돌 목록이 두 키를 "항목 값" · "본문" 으로 바꿔 보여 줌
+        // 그 밖의 키가 들어가면 원문 키 이름이 사용자 화면에 그대로 뜸
+        BulkUpsertRequest request = request(
+                List.of(),
+                List.of(new ConflictRequest("scope", Map.of("acmpyTypeCd", "가능", "text", "불가"))));
+
+        Set<ConstraintViolation<BulkUpsertRequest>> violations = validator.validate(request);
+
+        assertThat(violations).hasSize(1);
+        assertThat(violations.iterator().next().getPropertyPath().toString())
+                .isEqualTo("items[0].conflicts[0].sourceValueKeysValid");
+    }
+
+    @Test
+    @DisplayName("소스 내 충돌의 값이 한 키뿐이면 막는다")
+    void 충돌_값이_하나면_막힌다() {
+        // 갈린 상대가 없음
+        BulkUpsertRequest request = request(
+                List.of(),
+                List.of(new ConflictRequest("scope", Map.of("field", "가능"))));
+
+        assertThat(validator.validate(request)).hasSize(1);
+    }
+
     private static BulkUpsertRequest request(List<EvidenceRequest> evidence,
                                              List<ConflictRequest> conflicts) {
         BulkItemRequest item = new BulkItemRequest(UUID.randomUUID(), SourceType.PET_TOUR,

@@ -29,6 +29,12 @@ import org.hibernate.type.SqlTypes;
  *
  * 사용자에게는 배지로만 알리고 문구가 원인을 단정하지 않게 씁니다.
  * 소스가 틀린 것인지 장소가 바뀐 것인지 우리는 모릅니다.
+ *
+ * <b>닫는 표시를 두지 않습니다.</b>
+ * 충돌을 닫는 길은 관리자 정정뿐이고, 정정 행이 병합에서 이기면
+ * 병합에 참여한 소스가 그 행 하나가 되어 배지가 닫힙니다.
+ * 소스 간 어긋남은 재병합이 통째로 다시 만들고 소스 내 어긋남은 재추출이 갈아 끼웁니다.
+ * 어긋났던 기록은 policy_correction_log 의 전후와 그대로 남는 공공 소스 행이 맡습니다.
  */
 @Entity
 @Table(name = "policy_conflict")
@@ -80,14 +86,6 @@ public class PolicyConflict extends BaseEntity {
     @Column(name = "detected_at", nullable = false, updatable = false)
     private LocalDateTime detectedAt;
 
-    // 관리자가 정정했는지임
-    //
-    // place_pending_update 의 status 와 달리 개명하지 않았음
-    // 저쪽은 값이 셋이라 이름이 boolean 처럼 읽히는 것이 문제였고
-    // 여기는 실제로 참 거짓 둘뿐임
-    @Column(name = "resolved", nullable = false)
-    private boolean resolved;
-
     private PolicyConflict(UUID placeId, String fieldName, Map<String, Object> sourceValues,
                            ConflictType conflictType, SourceType source) {
         this.placeId = placeId;
@@ -96,7 +94,6 @@ public class PolicyConflict extends BaseEntity {
         this.conflictType = conflictType;
         this.source = source;
         this.detectedAt = LocalDateTime.now();
-        this.resolved = false;
     }
 
     /**
@@ -133,16 +130,6 @@ public class PolicyConflict extends BaseEntity {
         }
         return new PolicyConflict(placeId, fieldName, sourceValues,
                 ConflictType.INTRA_SOURCE, source);
-    }
-
-    /**
-     * 관리자가 정정해 이 충돌이 닫혔음을 표시합니다.
-     *
-     * 행을 지우지 않습니다.
-     * 어긋났던 사실 자체가 기록이고, 지우면 왜 이 값이 됐는지를 되짚을 수 없습니다.
-     */
-    public void resolve() {
-        this.resolved = true;
     }
 
     private static void validate(UUID placeId, String fieldName,

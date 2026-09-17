@@ -1,5 +1,6 @@
 package com.pawtrail.policy.presentation.request;
 
+import com.pawtrail.policy.domain.enums.IntraConflictKey;
 import com.pawtrail.policy.domain.rule.FieldSpec;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
@@ -19,6 +20,9 @@ import java.util.Map;
  *
  * fieldName 은 근거와 같은 규칙입니다. 조건 스무 칸의 이름(camelCase)이어야 하며
  * 병합이 만드는 소스 간 어긋남도 같은 이름으로 저장됩니다.
+ *
+ * sourceValues 는 field(원문의 항목 값)와 text(본문) 두 키로 보냅니다.
+ * 공개 충돌 목록이 두 키를 "항목 값" · "본문" 으로 바꿔 보여 주므로 그 밖의 키는 400 입니다.
  *
  * @param fieldName    어느 조건에서 갈렸는지. FieldSpec 의 조건 이름
  * @param sourceValues 무엇과 무엇이 갈렸는지. 예 {"field": "가능", "text": "불가"}
@@ -41,5 +45,18 @@ public record ConflictRequest(
     @AssertTrue(message = "충돌의 조건 이름이 조건 스무 칸에 없습니다.")
     public boolean isFieldNameKnown() {
         return fieldName == null || fieldName.isBlank() || FieldSpec.isKnownName(fieldName);
+    }
+
+    /**
+     * 무엇과 무엇이 갈렸는지를 정해진 두 키로 보냈는지 봅니다.
+     *
+     * 그 밖의 키가 오면 원문의 키 이름이 사용자 화면에 그대로 뜹니다.
+     * 둘 중 하나만 오면 갈린 상대가 없습니다.
+     * 비어 있으면 통과시킵니다. 그 경우는 @NotEmpty 가 이미 막습니다.
+     */
+    @AssertTrue(message = "소스 내 충돌의 값은 field 와 text 두 키로 보내야 합니다.")
+    public boolean isSourceValueKeysValid() {
+        return sourceValues == null || sourceValues.isEmpty()
+                || IntraConflictKey.keys().equals(sourceValues.keySet());
     }
 }

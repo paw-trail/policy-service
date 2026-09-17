@@ -36,9 +36,19 @@ public enum SourceType {
     //
     // MANUAL 과 나눠 둔 것은 신뢰도가 다르기 때문임
     // 업주가 알려준 것과 관리자 추정을 나중에 갈라 볼 이유가 실제로 있음
-    OWNER
+    OWNER;
 
     // MOIS_VET 은 없음
     // 행정안전부 동물병원 인허가 데이터에는 동반 조건이 없어
     // 이 표에 행이 생기지 않음
+
+    /**
+     * 사람이 넣은 정정 행의 출처인지입니다.
+     *
+     * 병합에서 통째로 이기는 티어이며, 이 판별이 여러 자리(원재료 행 · batch 출력 · 충돌 조회)에서
+     * 같아야 해 한곳에 둡니다.
+     */
+    public boolean isCorrection() {
+        return this == MANUAL || this == OWNER;
+    }
 }
