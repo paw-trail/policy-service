@@ -51,7 +51,20 @@ public enum PolicyErrorCode implements ErrorCode {
     // 소스가 없는 장소를 재병합하면 빈 조건 행이 생겨
     // "조건 행이 없음"(동물병원 · 추출 전)이 "추출했으나 조건이 없음" 으로 바뀜
     // batch 에서 빠지던 장소가 빈 조건으로 담기기 시작하므로 막음
-    POLICY_SOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "재병합할 조건 소스가 없는 장소입니다.");
+    POLICY_SOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "재병합할 조건 소스가 없는 장소입니다."),
+
+    // 관리자가 누른 재발행이 실패함
+    //
+    // 성공으로 응답하면 안 되는 자리임
+    // 관리자는 보냈다고 알고 넘어가는데 이벤트는 여전히 안 나가며,
+    // 그 상태가 바로 이 기능이 막으려던 것임
+    //
+    // 500 인 것은 사용자가 고칠 수 있는 것이 없기 때문임
+    // 카프카가 죽어 있거나 이벤트 자체에 문제가 있는 경우라 우리가 봐야 함
+    //
+    // auth · place · pet 의 같은 이름 코드와 값도 문구도 같음
+    // 다섯 서비스의 아웃박스 화면이 한곳에 모이므로 응답이 서로 달라질 이유가 없음
+    OUTBOX_REPUBLISH_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "이벤트 재발행에 실패했습니다.");
 
     private final HttpStatus status;
     private final String message;

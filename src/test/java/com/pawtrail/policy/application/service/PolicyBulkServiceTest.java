@@ -142,12 +142,14 @@ class PolicyBulkServiceTest extends IntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("승자만 바뀐 재병합은 판을 올리지 않지만 승자는 새로 적힌다")
+    @DisplayName("승자만 바뀌고 보여 줄 근거가 같으면 판은 그대로지만 승자는 새로 적힌다")
     void 승자만_바뀌면_판은_그대로다() {
         // 공사가 이미 소스로 있고, 고캠핑이 채우던 칸을 같은 값으로 새로 채우는 경우임
-        // 사용자에게 보이는 값이 같아 알림 대상이 아니지만 보여 줄 근거는 공사 것으로 바뀌어야 함
+        // 두 소스 모두 그 칸의 근거를 보내지 않아 batch 가 내보내는 것이 같음 — 판이 오르면 안 됨
+        // 승자는 batch 가 근거를 고르는 기준이라 판과 상관없이 공사로 바뀌어야 함
         //
-        // * 공사가 새로 들어오는 경우는 이 검사가 아님
+        // * 보여 줄 근거가 달라지는 경우는 판이 오름 — PolicyChangedRecordTest 에서 봄
+        // * 공사가 새로 들어오는 경우도 이 검사가 아님
         //   그때는 최상위 티어(sourcePriority)가 바뀌어 판이 오름
         UUID placeId = UUID.randomUUID();
         policyBulkService.upsert(request(
@@ -201,7 +203,7 @@ class PolicyBulkServiceTest extends IntegrationTestSupport {
     @Test
     @DisplayName("같은 장소에 소스가 둘이면 병합은 한 번만 돈다")
     void 같은_장소는_한_번만_병합된다() {
-        // 판이 오르는 횟수가 곧 알림 횟수라 한 청크에서 여러 번 오르면 안 됨
+        // 판이 오르는 횟수가 곧 policy.changed 가 나가는 횟수라 한 청크에서 여러 번 오르면 안 됨
         UUID placeId = UUID.randomUUID();
         BulkUpsertResult result = policyBulkService.upsert(request(
                 item(placeId, SourceType.PET_TOUR,

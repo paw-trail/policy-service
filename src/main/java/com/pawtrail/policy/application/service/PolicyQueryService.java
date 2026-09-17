@@ -11,6 +11,7 @@ import com.pawtrail.policy.domain.model.PolicyEvidence;
 import com.pawtrail.policy.domain.repository.PetPolicyRepository;
 import com.pawtrail.policy.domain.repository.PolicyConflictRepository;
 import com.pawtrail.policy.domain.repository.PolicyEvidenceRepository;
+import com.pawtrail.policy.domain.rule.AdoptedEvidence;
 import com.pawtrail.policy.domain.rule.FieldSpec;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -35,20 +36,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class PolicyQueryService {
-
-    /**
-     * 근거를 늘어놓는 순서입니다.
-     *
-     * 조건 순서 → 소스 순서 → 조각 번호입니다.
-     * 소스 열거값의 순서가 공공 우선순위와 같아 목록 칸에서는 앞선 소스의 근거가 먼저 옵니다.
-     * 조각 번호가 없는 근거(쪼갤 것이 없는 필드)는 같은 소스 안에서 앞에 둡니다.
-     * 순서를 못 박아야 같은 장소를 두 번 물었을 때 응답이 같습니다.
-     */
-    private static final Comparator<PolicyEvidence> EVIDENCE_ORDER =
-            Comparator.comparingInt((PolicyEvidence evidence) -> FieldSpec.orderOf(evidence.getFieldName()))
-                    .thenComparing(PolicyEvidence::getSource)
-                    .thenComparing(PolicyEvidence::getSegmentIndex,
-                            Comparator.nullsFirst(Comparator.<Integer>naturalOrder()));
 
     /**
      * 충돌을 늘어놓는 순서입니다.
@@ -87,6 +74,10 @@ public class PolicyQueryService {
      * <b>근거는 칸마다 그 값을 만든 소스의 것만 담습니다.</b>
      * 근거 표는 소스마다 제 근거를 가지므로 병합에서 진 소스의 근거도 남아 있습니다.
      * 승자는 병합이 pet_policy.field_sources 에 적어 둔 것을 따릅니다.
+     *
+     * 고르는 규칙과 순서는 AdoptedEvidence 가 갖습니다.
+     * 재병합이 같은 규칙으로 근거 지문을 떠 판을 올릴지 정하므로, 여기서 따로 고르면
+     * 내보내는 근거와 지문이 어긋나 근거가 바뀌었는데 판이 안 오르는 일이 생깁니다.
      */
     @Transactional(readOnly = true)
     public List<PolicyBatchOutput> findByPlaceIds(Collection<UUID> placeIds) {
@@ -131,10 +122,7 @@ public class PolicyQueryService {
      * 틀린 근거를 내보내느니 빠진 근거가 되는 쪽을 택합니다.
      */
     private List<EvidenceOutput> adoptedEvidence(PetPolicy policy, List<PolicyEvidence> evidences) {
-        return evidences.stream()
-                .filter(evidence -> policy.sourcesOf(evidence.getFieldName())
-                        .contains(evidence.getSource()))
-                .sorted(EVIDENCE_ORDER)
+        return AdoptedEvidence.select(evidences, policy::sourcesOf).stream()
                 .map(EvidenceOutput::from)
                 .toList();
     }
