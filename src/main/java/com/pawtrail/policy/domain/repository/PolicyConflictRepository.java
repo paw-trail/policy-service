@@ -2,6 +2,7 @@ package com.pawtrail.policy.domain.repository;
 
 import com.pawtrail.policy.domain.enums.SourceType;
 import com.pawtrail.policy.domain.model.PolicyConflict;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -15,11 +16,18 @@ public interface PolicyConflictRepository {
     /**
      * 이 장소의 충돌을 전부 가져옵니다.
      *
-     * 닫힌 것도 함께 옵니다.
-     * 관리자가 정정한 뒤에도 어긋났던 사실은 남아 있어야 왜 이 값이 됐는지를 되짚습니다.
-     * 화면에 무엇을 보일지는 부르는 쪽이 가립니다.
+     * 병합에 참여하지 않은 소스의 소스 내 어긋남도 함께 옵니다.
+     * 화면에 무엇을 보일지는 부르는 쪽이 has_conflict 와 같은 기준으로 가립니다.
      */
     List<PolicyConflict> findByPlaceId(UUID placeId);
+
+    /**
+     * 주어진 소스들 중 소스 내 어긋남을 남긴 것이 있는지 봅니다.
+     *
+     * has_conflict 를 정할 때 병합에 참여한 소스만 넘깁니다.
+     * 소스 목록이 비어 있으면 조회하지 않고 거짓입니다.
+     */
+    boolean existsIntraSource(UUID placeId, Collection<SourceType> sources);
 
     /**
      * 한 소스가 남긴 소스 내 어긋남을 지웁니다.

@@ -1,12 +1,16 @@
 package com.pawtrail.policy.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import com.pawtrail.policy.IntegrationTestSupport;
+import com.pawtrail.policy.application.dto.output.ConflictOutput;
+import com.pawtrail.policy.application.dto.output.ConflictValueOutput;
 import com.pawtrail.policy.application.dto.output.EvidenceOutput;
 import com.pawtrail.policy.application.dto.output.PolicyBatchOutput;
 import com.pawtrail.policy.application.dto.output.PolicyFieldsOutput;
 import com.pawtrail.policy.domain.enums.BreedRule;
+import com.pawtrail.policy.domain.enums.ConflictType;
 import com.pawtrail.policy.domain.enums.ExtraFeeUnit;
 import com.pawtrail.policy.domain.enums.ExtractionMethod;
 import com.pawtrail.policy.domain.enums.Scope;
@@ -17,6 +21,7 @@ import com.pawtrail.policy.domain.model.PolicyFields;
 import com.pawtrail.policy.domain.repository.PetPolicySourceRepository;
 import com.pawtrail.policy.presentation.request.BulkItemRequest;
 import com.pawtrail.policy.presentation.request.BulkUpsertRequest;
+import com.pawtrail.policy.presentation.request.ConflictRequest;
 import com.pawtrail.policy.presentation.request.EvidenceRequest;
 import com.pawtrail.policy.presentation.request.PolicyFieldsRequest;
 import jakarta.persistence.EntityManager;
@@ -25,6 +30,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -154,6 +160,7 @@ class PolicyQueryServiceTest extends IntegrationTestSupport {
 
         assertThat(output.hasConflict()).isFalse();
         assertThat(output.policyVersion()).isEqualTo(1);
+        assertThat(output.correctionSource()).isNull();
     }
 
     @Test
@@ -232,6 +239,9 @@ class PolicyQueryServiceTest extends IntegrationTestSupport {
 
         assertThat(output.fields().scope()).isEqualTo(Scope.ALL_AREA);
         assertThat(output.evidence()).isEmpty();
+
+        // 근거가 비어도 verdict 가 "사람이 확인해 정한 값" 으로 가를 수 있어야 함
+        assertThat(output.correctionSource()).isEqualTo(SourceType.MANUAL);
     }
 
     @Test
@@ -258,6 +268,79 @@ class PolicyQueryServiceTest extends IntegrationTestSupport {
                 .containsExactly("공사 범위", "공사 구역 첫째", "공사 구역 둘째", "문화정보원 구역");
     }
 
+    @Test
+    @DisplayName("충돌이 없거나 조건 행이 없는 장소는 빈 충돌 목록이다")
+    void 충돌이_없으면_빈_목록() {
+        // 조건 행이 없어도 404 가 아님 — 이 서비스는 장소가 있는지 모름
+        UUID placeId = UUID.randomUUID();
+        policyBulkService.upsert(request(
+                item(placeId, SourceType.PET_TOUR,
+                        fieldsOf(PolicyFields.builder().scope(Scope.PARTIAL).build()))));
+        clear();
+
+        assertThat(policyQueryService.findConflicts(placeId)).isEmpty();
+        assertThat(policyQueryService.findConflicts(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("충돌은 조건 순서 · 소스 간 먼저 · 소스 순서로 라벨과 문장을 붙여 나온다")
+    void 충돌_목록의_모양과_순서() {
+        // 문암생태공원 조합에 고캠핑의 소스 내 어긋남을 하나 더함
+        // 실외는 고캠핑 false · 문화정보원 true 로 소스끼리 갈림
+        UUID placeId = UUID.randomUUID();
+        policyBulkService.upsert(request(
+                item(placeId, SourceType.PET_TOUR,
+                        fieldsOf(PolicyFields.builder().scope(Scope.PARTIAL).build())),
+                item(placeId, SourceType.GOCAMPING,
+                        fieldsOf(PolicyFields.builder()
+                                .indoorAllowed(false).outdoorAllowed(false).build()),
+                        List.of(),
+                        List.of(new ConflictRequest("scope", Map.of("field", "가능", "text", "불가")))),
+                item(placeId, SourceType.CULTURE_CSV,
+                        fieldsOf(PolicyFields.builder()
+                                .indoorAllowed(false).outdoorAllowed(true).build()))));
+        clear();
+
+        List<ConflictOutput> conflicts = policyQueryService.findConflicts(placeId);
+
+        // scope 가 outdoorAllowed 보다 조건 순서가 앞이라 소스 내 어긋남이어도 먼저 옴
+        assertThat(conflicts)
+                .extracting(ConflictOutput::fieldName, ConflictOutput::label, ConflictOutput::conflictType)
+                .containsExactly(
+                        tuple("scope", "동반 범위", ConflictType.INTRA_SOURCE),
+                        tuple("outdoorAllowed", "실외 동반", ConflictType.CROSS_SOURCE));
+
+        // jsonb 가 {"text", "field"} 로 뒤집어 저장해도 항목 값 → 본문 순이어야 함
+        // 원문의 말을 옮긴 것이라 값은 문장으로 안 바꿈
+        assertThat(conflicts.get(0).sourceValues()).containsExactly(
+                new ConflictValueOutput(SourceType.GOCAMPING, "항목 값", "가능"),
+                new ConflictValueOutput(SourceType.GOCAMPING, "본문", "불가"));
+
+        // 소스 간 어긋남은 원값을 문장으로 바꾸고 소스 열거 순서로 둠
+        assertThat(conflicts.get(1).sourceValues()).containsExactly(
+                new ConflictValueOutput(SourceType.GOCAMPING, null, "불가"),
+                new ConflictValueOutput(SourceType.CULTURE_CSV, null, "가능"));
+    }
+
+    @Test
+    @DisplayName("정정 행이 이긴 장소는 소스 내 어긋남이 남아 있어도 빈 충돌 목록이다")
+    void 정정이_이기면_충돌_목록이_빈다() {
+        // 배지와 목록이 같은 집합이어야 함 — 정정이 이기면 배지가 닫히므로 목록도 비어야 함
+        UUID placeId = UUID.randomUUID();
+        policyBulkService.upsert(request(
+                item(placeId, SourceType.GOCAMPING,
+                        fieldsOf(PolicyFields.builder().indoorAllowed(false).build()),
+                        List.of(),
+                        List.of(new ConflictRequest("scope", Map.of("field", "가능", "text", "불가"))))));
+
+        petPolicySourceRepository.save(PetPolicySource.corrected(placeId, SourceType.MANUAL,
+                PolicyFields.builder().scope(Scope.PARTIAL).build(), "검증용 정정"));
+        policyMergeService.remerge(placeId);
+        clear();
+
+        assertThat(policyQueryService.findConflicts(placeId)).isEmpty();
+    }
+
     private void clear() {
         entityManager.flush();
         entityManager.clear();
@@ -276,7 +359,14 @@ class PolicyQueryServiceTest extends IntegrationTestSupport {
     private static BulkItemRequest item(UUID placeId, SourceType source,
                                         PolicyFieldsRequest fields,
                                         List<EvidenceRequest> evidence) {
-        return new BulkItemRequest(placeId, source, fields, evidence, List.of(),
+        return item(placeId, source, fields, evidence, List.of());
+    }
+
+    private static BulkItemRequest item(UUID placeId, SourceType source,
+                                        PolicyFieldsRequest fields,
+                                        List<EvidenceRequest> evidence,
+                                        List<ConflictRequest> conflicts) {
+        return new BulkItemRequest(placeId, source, fields, evidence, conflicts,
                 ExtractionMethod.RULE);
     }
 

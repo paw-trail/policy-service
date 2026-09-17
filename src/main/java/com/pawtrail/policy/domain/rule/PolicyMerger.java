@@ -99,7 +99,7 @@ public final class PolicyMerger {
      */
     private static MergeResult single(PetPolicySource source) {
         return new MergeResult(source.getFields(), false, source.getSource(), List.of(),
-                allFieldsFrom(source.getSource()));
+                allFieldsFrom(source.getSource()), List.of(source.getSource()));
     }
 
     /**
@@ -144,7 +144,8 @@ public final class PolicyMerger {
                 !conflicts.isEmpty(),
                 ordered.getFirst().getSource(),
                 conflicts,
-                fieldSources
+                fieldSources,
+                ordered.stream().map(PetPolicySource::getSource).toList()
         );
     }
 

@@ -3,6 +3,7 @@ package com.pawtrail.policy.infrastructure.persistence.jpa;
 import com.pawtrail.policy.domain.enums.ConflictType;
 import com.pawtrail.policy.domain.enums.SourceType;
 import com.pawtrail.policy.domain.model.PolicyConflict;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -17,6 +18,9 @@ import org.springframework.data.repository.query.Param;
 public interface PolicyConflictJpaRepository extends JpaRepository<PolicyConflict, UUID> {
 
     List<PolicyConflict> findByPlaceId(UUID placeId);
+
+    boolean existsByPlaceIdAndConflictTypeAndSourceIn(UUID placeId, ConflictType conflictType,
+                                                      Collection<SourceType> sources);
 
     /**
      * 한 소스가 남긴 소스 내 어긋남을 지웁니다.

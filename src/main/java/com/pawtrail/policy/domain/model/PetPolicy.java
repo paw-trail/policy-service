@@ -55,10 +55,13 @@ public class PetPolicy extends BaseEntity {
     @Embedded
     private PolicyFields fields;
 
-    // 소스끼리 값이 갈린 필드가 하나라도 있는지임
+    // 열린 충돌이 하나라도 있는지임
     //
+    // 병합이 찾은 소스 간 어긋남이 있거나 병합에 참여한 소스의 소스 내 어긋남이 있으면 참임
+    // 정정 행이 이기면 참여한 소스가 그 행 하나라 공공 소스의 어긋남은 세지 않음
     // 상세 내역은 policy_conflict 가 갖고 이 값은 배지 표시용임
     // 장소 상세가 이 값이 참일 때만 충돌 조회를 부르므로 헛 호출이 안 나감
+    // * 공개 충돌 목록은 이 값이 센 것과 같은 집합이어야 함 — 배지와 목록이 어긋나면 안 됨
     @Column(name = "has_conflict", nullable = false)
     private boolean hasConflict;
 

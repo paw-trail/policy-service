@@ -18,18 +18,23 @@ import java.util.Map;
  * 값을 고른 그 순회에서 승자가 정해지므로 따로 계산하면 결론이 둘이 됩니다.
  *
  * @param fields         합쳐진 조건 한 벌
- * @param hasConflict    어긋난 자리가 하나라도 있는지
+ * @param hasConflict    병합이 찾은 소스 간 어긋남이 하나라도 있는지.
+ *                       pet_policy.has_conflict 는 여기에 참여한 소스의 소스 내 어긋남을 더한 값이며
+ *                       그 계산은 저장된 행을 봐야 해 PolicyMergeService 가 함
  * @param sourcePriority 이 병합에서 최상위로 이긴 티어
  * @param conflicts      필드별로 소스들이 뭐라고 했는지
  * @param fieldSources   칸마다 그 값을 만든 소스. 키는 조건 이름이고 순서는 FieldSpec 순서임.
  *                       값은 우선순위 순의 소스 목록이며, 아무 소스도 말하지 않은 칸은 키가 없음
+ * @param participants   병합에 참여한 소스. 정정 행이 이기면 그 행 하나이고 공공이면 있는 소스 전부.
+ *                       값을 하나도 안 채운 소스도 참여한 것으로 셈
  */
 public record MergeResult(
         PolicyFields fields,
         boolean hasConflict,
         SourceType sourcePriority,
         List<FieldConflict> conflicts,
-        Map<String, List<SourceType>> fieldSources
+        Map<String, List<SourceType>> fieldSources,
+        List<SourceType> participants
 ) {
 
     public MergeResult {
@@ -38,6 +43,7 @@ public record MergeResult(
         }
         conflicts = conflicts == null ? List.of() : List.copyOf(conflicts);
         fieldSources = copySources(fieldSources);
+        participants = participants == null ? List.of() : List.copyOf(participants);
     }
 
     /**
@@ -47,7 +53,7 @@ public record MergeResult(
      * 소스가 전부 무효화된 장소에서 나옵니다.
      */
     public static MergeResult empty() {
-        return new MergeResult(PolicyFields.empty(), false, null, List.of(), Map.of());
+        return new MergeResult(PolicyFields.empty(), false, null, List.of(), Map.of(), List.of());
     }
 
     /**
