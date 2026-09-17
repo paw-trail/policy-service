@@ -86,8 +86,10 @@ public class PetPolicy extends BaseEntity {
     //   칸 이름으로만 고르면 정정한 값 옆에 옛 공공 문구가 출처로 뜸
     // * 값을 고르는 순회에서 함께 나오므로 값과 어긋날 수 없음
     //   재병합이 매번 덮어써 늘 최신임
-    // * 판을 올리는 기준에는 넣지 않음
-    //   승자만 바뀐 재병합은 사용자에게 보이는 값이 같아 알림 대상이 아님
+    // * 판을 올리는 기준에 직접 넣지 않음
+    //   batch 가 내보내는 것은 승자가 아니라 승자의 근거라 아래 evidenceDigest 가 그것을 담음
+    //   승자가 바뀌어 보여 줄 근거가 달라지면 지문이 달라져 판이 오르고,
+    //   두 소스 모두 그 칸 근거가 없어 보여 줄 것이 같으면 판은 그대로임
     // * 값을 Map<String, Object> 로 두는 것은 policy_conflict.source_values 와 같은 길을 가려는 것임
     //   바깥에는 sourcesOf 로 소스 열거값을 돌려줌
     @Getter(AccessLevel.NONE)
@@ -95,24 +97,39 @@ public class PetPolicy extends BaseEntity {
     @Column(name = "field_sources", nullable = false, columnDefinition = "jsonb")
     private Map<String, Object> fieldSources;
 
+    // batch 가 내보내는 근거의 지문임
+    //
+    // SHA-256 소문자 16진수 64자이며 AdoptedEvidence.digest 가 만듦
+    // 재병합이 새로 뜬 지문과 비교해 달라졌으면 판을 올림
+    //   근거 문구는 카드 한 줄 · 항목별 이유로 화면에 나가므로 조건 값이 같아도 달라진 것임
+    //   적재는 근거를 지운 뒤 다시 넣고 청크 끝에 재병합하므로 재병합 시점에는 옛 근거가 없음
+    //   그래서 옛 근거 대신 그때 뜬 지문을 남겨 둠
+    // * null 은 V24 이전에 만들어져 아직 다시 병합되지 않은 행임
+    //   비교할 옛 지문이 없으므로 처음 한 번은 지문만 채우고 판은 올리지 않음
+    @Column(name = "evidence_digest", length = 64)
+    private String evidenceDigest;
+
     @Column(name = "merged_at", nullable = false)
     private LocalDateTime mergedAt;
 
-    // 갱신될 때마다 오름
+    // batch 가 내보내는 것이 바뀔 때마다 오름
     //
-    // policy.changed 발행 기준이며 받는 쪽이 자기가 아는 판과 비교함
+    // 조건 스무 칸 · 충돌 여부 · 최상위 티어 · 근거 지문 가운데 하나라도 달라지면 오름
+    // 오를 때마다 policy.changed 가 나가며 받는 쪽이 자기가 아는 판과 비교함
     // 재병합해도 결과가 같으면 오르지 않음
-    // 그래야 값이 안 바뀐 재병합으로 알림이 나가지 않음
+    // 그래야 아무것도 안 바뀐 재병합으로 이벤트가 나가지 않음
     @Column(name = "policy_version", nullable = false)
     private int policyVersion;
 
     private PetPolicy(UUID placeId, PolicyFields fields, boolean hasConflict,
-                      SourceType sourcePriority, Map<String, List<SourceType>> fieldSources) {
+                      SourceType sourcePriority, Map<String, List<SourceType>> fieldSources,
+                      String evidenceDigest) {
         this.placeId = placeId;
         this.fields = fields;
         this.hasConflict = hasConflict;
         this.sourcePriority = sourcePriority;
         this.fieldSources = toSnapshot(fieldSources);
+        this.evidenceDigest = evidenceDigest;
         this.mergedAt = LocalDateTime.now();
         this.policyVersion = 1;
     }
@@ -122,39 +139,44 @@ public class PetPolicy extends BaseEntity {
      *
      * 판이 1 부터 시작합니다.
      * 0 이 아닌 것은 받는 쪽이 "아직 아무것도 모름" 과 "첫 판" 을 가릴 수 있게 하기 위해서입니다.
+     *
+     * @param evidenceDigest batch 가 내보낼 근거의 지문. AdoptedEvidence.digest 가 만든 값
      */
     public static PetPolicy merged(UUID placeId, PolicyFields fields,
                                    boolean hasConflict, SourceType sourcePriority,
-                                   Map<String, List<SourceType>> fieldSources) {
+                                   Map<String, List<SourceType>> fieldSources,
+                                   String evidenceDigest) {
         if (placeId == null) {
             throw new IllegalArgumentException("placeId 는 필수입니다.");
         }
         if (fields == null) {
             throw new IllegalArgumentException("조건은 필수입니다.");
         }
-        return new PetPolicy(placeId, fields, hasConflict, sourcePriority, fieldSources);
+        return new PetPolicy(placeId, fields, hasConflict, sourcePriority, fieldSources, evidenceDigest);
     }
 
     /**
      * 다시 병합한 결과로 갈아 끼웁니다.
      *
-     * 값이 실제로 달라졌을 때만 판이 오릅니다.
+     * batch 가 내보내는 것이 실제로 달라졌을 때만 판이 오릅니다.
      * 재병합은 소스가 안 바뀌어도 부를 수 있는 동작이라, 부를 때마다 판을 올리면
      * 아무것도 안 바뀐 재병합으로 policy.changed 가 나가고
-     * 즐겨찾기한 사람 전부에게 알림이 갑니다.
+     * 받는 쪽이 멀쩡한 캐시를 지우고 알림을 보냅니다.
      *
-     * 값이 같은지는 호출부가 판단해 넘깁니다.
-     * 무엇이 달라졌는지(changedFields)를 어차피 계산해야 하고,
+     * 달라졌는지는 호출부가 판단해 넘깁니다.
+     * 무엇이 달라졌는지(changedFields)를 어차피 계산해 이벤트에 실어야 하고,
      * 그 계산을 여기서 또 하면 같은 비교가 두 번 돌기 때문입니다.
      *
-     * 칸별 승자는 판과 상관없이 늘 덮어씁니다.
-     * 값이 같아도 승자가 바뀔 수 있고, 그때 보여 줄 근거도 바뀌어야 하기 때문입니다.
+     * 칸별 승자와 근거 지문은 판과 상관없이 늘 덮어씁니다.
+     * 승자는 값이 같아도 바뀔 수 있고 batch 가 그것으로 근거를 고릅니다.
+     * 지문은 V24 이전 행처럼 판을 올리지 않고 채우기만 하는 경우가 있습니다.
      *
-     * @param changed 병합 결과가 이전과 달라졌는지
+     * @param evidenceDigest batch 가 내보낼 근거의 지문. AdoptedEvidence.digest 가 만든 값
+     * @param changed        batch 가 내보내는 것이 이전과 달라졌는지
      */
     public void remerge(PolicyFields fields, boolean hasConflict,
                         SourceType sourcePriority, Map<String, List<SourceType>> fieldSources,
-                        boolean changed) {
+                        String evidenceDigest, boolean changed) {
         if (fields == null) {
             throw new IllegalArgumentException("조건은 필수입니다.");
         }
@@ -162,6 +184,7 @@ public class PetPolicy extends BaseEntity {
         this.hasConflict = hasConflict;
         this.sourcePriority = sourcePriority;
         this.fieldSources = toSnapshot(fieldSources);
+        this.evidenceDigest = evidenceDigest;
         this.mergedAt = LocalDateTime.now();
         if (changed) {
             this.policyVersion++;
