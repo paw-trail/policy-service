@@ -12,6 +12,7 @@ import com.pawtrail.policy.domain.model.PolicyCorrectionLog;
 import com.pawtrail.policy.domain.model.PolicyFields;
 import com.pawtrail.policy.domain.repository.PetPolicyRepository;
 import com.pawtrail.policy.domain.repository.PetPolicySourceRepository;
+import com.pawtrail.policy.domain.repository.PlaceLockRepository;
 import com.pawtrail.policy.domain.repository.PolicyCorrectionLogRepository;
 import com.pawtrail.policy.domain.rule.FieldSpec;
 import java.util.Map;
@@ -39,6 +40,7 @@ public class PolicyCorrectionService {
     private final PetPolicySourceRepository petPolicySourceRepository;
     private final PolicyCorrectionLogRepository policyCorrectionLogRepository;
     private final PolicyMergeService policyMergeService;
+    private final PlaceLockRepository placeLockRepository;
 
     /**
      * 폼을 채울 현재 상태를 돌려줍니다.
@@ -57,12 +59,18 @@ public class PolicyCorrectionService {
      * 순서가 곧 규칙입니다.
      * <pre>
      * ① 출처가 MANUAL · OWNER 인지         아니면 400 POLICY_SOURCE_NOT_ALLOWED
-     * ② MANUAL 인데 OWNER 행이 있는지      있으면 409 POLICY_OWNER_CORRECTION_EXISTS
-     * ③ 저장 직전 병합 결과를 스냅샷으로 떠 둠   이력의 before
-     * ④ 같은 출처의 정정 행을 갈아 끼우거나 새로 만듦
-     * ⑤ 재병합
-     * ⑥ 이력을 남김                        같은 값으로 다시 저장해도 남김
+     * ② 장소 잠금                          같은 장소의 적재 · 정정이 끝날 때까지 기다림
+     * ③ MANUAL 인데 OWNER 행이 있는지      있으면 409 POLICY_OWNER_CORRECTION_EXISTS
+     * ④ 저장 직전 병합 결과를 스냅샷으로 떠 둠   이력의 before
+     * ⑤ 같은 출처의 정정 행을 갈아 끼우거나 새로 만듦
+     * ⑥ 재병합                            같은 잠금을 다시 잡아도 막히지 않음
+     * ⑦ 이력을 남김                        같은 값으로 다시 저장해도 남김
      * </pre>
+     *
+     * 잠금을 OWNER 확인보다 먼저 잡는 이유는 확인과 저장 사이가 비어 있으면 안 되기 때문입니다.
+     * 잠그지 않으면 MANUAL 이 "OWNER 없음" 을 본 뒤 OWNER 가 먼저 커밋되고,
+     * MANUAL 이 OWNER 를 못 본 병합 결과로 덮어 OWNER 행이 있는데 MANUAL 이 이긴 것으로 남습니다.
+     * 조건 행이 없는 첫 정정에도 걸리도록 행이 아니라 장소 키로 잠급니다.
      *
      * before 를 같은 출처의 이전 정정 행이 아니라 병합 결과로 두는 것은
      * 첫 정정에서도 "원래 공공 값이 뭐였지" 가 남아야 하기 때문입니다.
@@ -78,6 +86,9 @@ public class PolicyCorrectionService {
         if (source == null || !source.isCorrection()) {
             throw new CustomException(PolicyErrorCode.POLICY_SOURCE_NOT_ALLOWED);
         }
+
+        placeLockRepository.lock(placeId);
+
         if (source == SourceType.MANUAL
                 && petPolicySourceRepository.findByPlaceIdAndSource(placeId, SourceType.OWNER).isPresent()) {
             throw new CustomException(PolicyErrorCode.POLICY_OWNER_CORRECTION_EXISTS);

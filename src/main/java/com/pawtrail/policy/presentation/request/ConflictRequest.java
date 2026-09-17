@@ -59,4 +59,24 @@ public record ConflictRequest(
         return sourceValues == null || sourceValues.isEmpty()
                 || IntraConflictKey.keys().equals(sourceValues.keySet());
     }
+
+    /**
+     * 두 자리 모두 말이 있는지 봅니다.
+     *
+     * 한쪽이 null 이거나 빈 문자열이면 갈린 상대가 없습니다.
+     * 그대로 저장하면 배지는 붙는데 공개 충돌 목록에는 한쪽 자리만 나갑니다.
+     * 키 이름은 위 검사가 막으므로 여기서는 값만 봅니다.
+     * 비어 있는 맵은 통과시킵니다. 그 경우는 @NotEmpty 가 이미 막습니다.
+     */
+    @AssertTrue(message = "소스 내 충돌의 field 와 text 값은 비어 있을 수 없습니다.")
+    public boolean isSourceValuesPresent() {
+        if (sourceValues == null || sourceValues.isEmpty()) {
+            return true;
+        }
+        return sourceValues.values().stream().allMatch(ConflictRequest::hasText);
+    }
+
+    private static boolean hasText(Object value) {
+        return value != null && !(value instanceof String text && text.isBlank());
+    }
 }

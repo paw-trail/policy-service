@@ -5,6 +5,7 @@ import com.pawtrail.policy.domain.model.PetPolicySource;
 import com.pawtrail.policy.domain.model.PolicyConflict;
 import com.pawtrail.policy.domain.repository.PetPolicyRepository;
 import com.pawtrail.policy.domain.repository.PetPolicySourceRepository;
+import com.pawtrail.policy.domain.repository.PlaceLockRepository;
 import com.pawtrail.policy.domain.repository.PolicyConflictRepository;
 import com.pawtrail.policy.domain.model.PolicyFields;
 import com.pawtrail.policy.domain.rule.FieldSpec;
@@ -42,6 +43,7 @@ public class PolicyMergeService {
     private final PetPolicySourceRepository petPolicySourceRepository;
     private final PetPolicyRepository petPolicyRepository;
     private final PolicyConflictRepository policyConflictRepository;
+    private final PlaceLockRepository placeLockRepository;
 
     /**
      * 이 장소의 조건을 다시 합칩니다.
@@ -68,10 +70,17 @@ public class PolicyMergeService {
      * 빈 행을 만들면 "조건 행이 없음"(동물병원 · 추출 전)이
      * "추출했으나 조건이 없음" 으로 바뀌어 batch 에서 빠지던 장소가 빈 조건으로 담깁니다.
      *
+     * <b>장소 잠금을 가장 먼저 잡습니다.</b>
+     * 소스를 읽기 전에 잡아야 다른 트랜잭션이 넣은 행을 본 뒤에 계산합니다.
+     * 적재 · 관리자 정정 · 재병합 버튼이 모두 이 메서드를 거치므로 한 장소의 병합이 한 줄로 섭니다.
+     * 먼저 읽은 쪽이 나중에 커밋하며 상대가 넣은 정정 행을 못 본 결과로 덮는 일을 막습니다.
+     *
      * @return 병합 결과가 이전과 달라졌는지
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public boolean remerge(UUID placeId) {
+        placeLockRepository.lock(placeId);
+
         List<PetPolicySource> sources = petPolicySourceRepository.findByPlaceId(placeId);
         Optional<PetPolicy> existing = petPolicyRepository.findByPlaceId(placeId);
 

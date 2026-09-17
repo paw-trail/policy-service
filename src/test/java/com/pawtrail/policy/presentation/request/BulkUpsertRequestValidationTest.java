@@ -9,6 +9,7 @@ import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -135,6 +136,33 @@ class BulkUpsertRequestValidationTest {
         BulkUpsertRequest request = request(
                 List.of(),
                 List.of(new ConflictRequest("scope", Map.of("field", "가능"))));
+
+        assertThat(validator.validate(request)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("소스 내 충돌의 값이 null 이면 그 충돌을 가리켜 막는다")
+    void 충돌_값이_null_이면_막힌다() {
+        // 그대로 저장하면 배지는 붙는데 공개 목록에는 본문 한 줄만 나감 (PR #10 리뷰)
+        Map<String, Object> values = new HashMap<>();
+        values.put("field", null);
+        values.put("text", "불가");
+        BulkUpsertRequest request = request(List.of(), List.of(new ConflictRequest("scope", values)));
+
+        Set<ConstraintViolation<BulkUpsertRequest>> violations = validator.validate(request);
+
+        assertThat(violations).hasSize(1);
+        assertThat(violations.iterator().next().getPropertyPath().toString())
+                .isEqualTo("items[0].conflicts[0].sourceValuesPresent");
+    }
+
+    @Test
+    @DisplayName("소스 내 충돌의 값이 빈 문자열이어도 막는다")
+    void 충돌_값이_빈_문자열이면_막힌다() {
+        // null 과 같은 이유 — 한쪽이 비면 갈린 상대가 없음
+        BulkUpsertRequest request = request(
+                List.of(),
+                List.of(new ConflictRequest("scope", Map.of("field", "가능", "text", " "))));
 
         assertThat(validator.validate(request)).hasSize(1);
     }

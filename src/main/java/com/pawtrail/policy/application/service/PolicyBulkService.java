@@ -60,8 +60,10 @@ public class PolicyBulkService {
             touched.add(item.placeId());
         }
 
+        // 장소를 정렬해 잠그는 순서를 고정함
+        // 두 적재가 겹치는 장소를 서로 다른 순서로 잠그면 서로를 기다리며 멈출 수 있음
         int merged = 0;
-        for (UUID placeId : touched) {
+        for (UUID placeId : touched.stream().sorted().toList()) {
             policyMergeService.remerge(placeId);
             merged++;
         }
