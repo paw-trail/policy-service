@@ -34,9 +34,9 @@ public final class JsonSnapshot {
      * null 값은 그대로 둡니다.
      * "정보 없음" 이 이 스냅샷에서 지워지면 안 되기 때문입니다.
      *
-     * 키 순서를 지킵니다.
-     * 조건 스무 가지가 사람이 읽는 순서로 들어오는데, 관리자 화면이 그대로 펼쳐
-     * 보여주므로 순서가 섞이면 같은 정정인데 매번 다르게 보입니다.
+     * 키 순서는 이 복사본 안에서만 지킵니다.
+     * jsonb 로 저장하면 PostgreSQL 이 키를 다시 정렬하므로 DB 에서 읽은 값은 순서가 섞여 있습니다.
+     * 사람이 읽는 순서로 늘어놓아야 하는 곳에서는 읽은 뒤 FieldSpec 순서로 다시 정렬합니다.
      */
     public static Map<String, Object> deepCopy(Map<String, Object> source) {
         if (source == null) {
