@@ -34,17 +34,19 @@ import org.junit.jupiter.api.Test;
  * </pre>
  *
  * <b>원문 값을 조건 필드로 옮기는 매핑은 extract 가 정합니다.</b>
- * 아직 정해지지 않았으므로 아래 테스트는 가정을 두고 씁니다.
+ * 아래는 extract 가 정한 매핑이고(2026.9.18) 테스트가 그대로 따릅니다.
  * 병합이 맞게 도는지를 보는 것이 목적이라 매핑이 바뀌어도 규칙 검증은 그대로 유효합니다.
  * <pre>
- * "전구역 동반가능"    → scope = ALL_AREA
- * "일부구역 동반가능"  → scope = PARTIAL
- * 실내 Y/N            → indoorAllowed
- * 실외 Y/N            → outdoorAllowed
- * "가능"              → 조건을 더 말하지 않은 것으로 봄
- * "가능(소형견)"       → sizeRule = SMALL_ONLY
- * "불가능"            → indoorAllowed = false, outdoorAllowed = false
+ * 공사 "전구역 동반가능"         → scope = ALL_AREA            실내 · 실외로 넓히지 않음
+ * 공사 "일부구역 동반가능"       → scope = PARTIAL
+ * 문화정보원 실내 · 실외 Y/N     → indoorAllowed · outdoorAllowed
+ * 고캠핑 "가능"                 → outdoorAllowed = true        실내는 원문이 말하지 않음
+ * 고캠핑 "가능(소형견)"          → outdoorAllowed = true, sizeRule = SMALL_ONLY
+ * 불가 — 공사 "불가" · 고캠핑 "불가능" · 문화정보원 동반 N
+ *                              → scope = NONE, indoorAllowed = false, outdoorAllowed = false
  * </pre>
+ * 불가를 범위 칸에도 적는 까닭 — 실내 · 실외에만 적으면 "일부 구역 가능" 을 말한 다른 출처와
+ * 칸이 달라 정면으로 갈리는데도 충돌로 잡히지 않습니다. 이 파일의 두 테스트가 그 자리입니다.
  */
 class PolicyMergerRealDataTest {
 
@@ -87,46 +89,59 @@ class PolicyMergerRealDataTest {
     }
 
     @Test
-    @DisplayName("실내외가 둘 다 안 되는 조합 — 소스 안에서 앞뒤가 안 맞는다")
-    void 실내외가_둘_다_불가() {
-        // 2곳. 실내도 실외도 아니라면서 범위는 동반 가능이라고 함
-        // 우리 규칙으로는 칸이 달라 충돌이 아니며 extract 가 INTRA_SOURCE 로 잡을 자리임
+    @DisplayName("공사는 일부 가능인데 문화정보원은 동반 불가라고 한다")
+    void 공사와_문화정보원이_정면으로_갈린다() {
+        // 2곳. 문화정보원은 동반 N 이면 실내 · 실외도 늘 N 이라 셋이 함께 불가로 옴
+        // 불가를 실내 · 실외에만 적던 때는 공사의 범위와 칸이 달라 충돌이 아니었음
+        // 지금은 범위 칸에서 부딪혀 배지가 붙음
         PetPolicySource petTour = extracted(SourceType.PET_TOUR,
                 PolicyFields.builder().scope(Scope.PARTIAL).build());
         PetPolicySource cultureCsv = extracted(SourceType.CULTURE_CSV,
-                PolicyFields.builder().indoorAllowed(false).outdoorAllowed(false).build());
+                PolicyFields.builder().scope(Scope.NONE).indoorAllowed(false).outdoorAllowed(false).build());
 
         MergeResult result = PolicyMerger.merge(List.of(petTour, cultureCsv));
 
-        assertThat(result.hasConflict()).isFalse();
+        assertThat(result.hasConflict()).isTrue();
+        assertThat(result.conflicts()).hasSize(1);
+        assertThat(result.conflicts().getFirst().fieldName()).isEqualTo("scope");
+
+        // 공사가 앞서므로 범위는 그 값이 남음
         assertThat(result.fields().getScope()).isEqualTo(Scope.PARTIAL);
+        // 문화정보원만 말한 실내 · 실외는 그대로 들어옴
+        assertThat(result.fields().getIndoorAllowed()).isFalse();
+        assertThat(result.fields().getOutdoorAllowed()).isFalse();
     }
 
     @Test
     @DisplayName("공사는 일부 가능인데 고캠핑은 불가능이라고 한다")
     void 공사와_고캠핑이_정면으로_갈린다() {
-        // 7곳. 같은 기관(한국관광공사)의 두 데이터셋이 다른 말을 하는 자리임
-        // 명파해변오토캠핑장 · 금방아 민박캠핑장 · 여울소리 · 국립 천관산자연휴양림
-        // 문암생태공원 · 영월키즈캠핑장 · 소풍정원 캠핑장
+        // 공사 일부구역 대 고캠핑 불가능 5곳 (2026.9.13 원문 덤프로 다시 셈)
+        // 영월키즈캠핑장 · 금방아 민박캠핑장 · 명파해변오토캠핑장 · 여울소리 · 문암생태공원
+        // 같은 기관(한국관광공사)의 두 데이터셋이 다른 말을 하는 자리임
         //
         // 이름을 대조해 거짓 병합이 아님을 확인했음 — 띄어쓰기만 다른 같은 곳임
         // 사용자가 한쪽만 보고 갔다가 못 들어가는 상황이 실재하며
         // 그것을 배지로 알리는 것이 이 서비스를 만든 이유임
+        //
+        // 공사의 동반 구분은 범위만 말하고 실내 · 실외는 채우지 않음
+        // 그래서 두 출처가 부딪히는 칸은 범위 하나임
+        // 예전 테스트는 불가를 실내 · 실외에만 적던 때라 공사에 실외 true 를 두어 충돌을 만들었음
         PetPolicySource petTour = extracted(SourceType.PET_TOUR,
-                PolicyFields.builder().scope(Scope.PARTIAL).outdoorAllowed(true).build());
+                PolicyFields.builder().scope(Scope.PARTIAL).build());
         PetPolicySource goCamping = extracted(SourceType.GOCAMPING,
-                PolicyFields.builder().indoorAllowed(false).outdoorAllowed(false).build());
+                PolicyFields.builder().scope(Scope.NONE).indoorAllowed(false).outdoorAllowed(false).build());
 
         MergeResult result = PolicyMerger.merge(List.of(petTour, goCamping));
 
         assertThat(result.hasConflict()).isTrue();
         assertThat(result.conflicts()).hasSize(1);
-        assertThat(result.conflicts().getFirst().fieldName()).isEqualTo("outdoorAllowed");
+        assertThat(result.conflicts().getFirst().fieldName()).isEqualTo("scope");
 
-        // 공사가 앞서므로 그 값이 남음
-        assertThat(result.fields().getOutdoorAllowed()).isTrue();
+        // 공사가 앞서므로 범위는 그 값이 남음
+        assertThat(result.fields().getScope()).isEqualTo(Scope.PARTIAL);
         // 고캠핑만 말한 칸은 그대로 들어옴
         assertThat(result.fields().getIndoorAllowed()).isFalse();
+        assertThat(result.fields().getOutdoorAllowed()).isFalse();
     }
 
     @Test
@@ -146,20 +161,44 @@ class PolicyMergerRealDataTest {
     }
 
     @Test
-    @DisplayName("문화정보원과 고캠핑만 있으면 고캠핑이 앞선다")
+    @DisplayName("문화정보원과 고캠핑만 있으면 고캠핑이 앞선다 — 젠틀펫 파라다이스")
     void 문화정보원과_고캠핑() {
         // 5곳. 공사가 없는 조합이며 둘 사이의 순서가 실제로 쓰이는 자리임
+        // 고캠핑은 가능 셋 · 가능(소형견) 하나 · 불가능 하나 (2026.9.13 원문 덤프)
+        // 실외에서 갈리는 곳이 둘 — 젠틀펫 파라다이스(가능 대 실외 N) · 소풍정원 캠핑장(아래 테스트)
         PetPolicySource goCamping = extracted(SourceType.GOCAMPING,
-                PolicyFields.builder().indoorAllowed(true).outdoorAllowed(true).build());
+                PolicyFields.builder().outdoorAllowed(true).build());
+        PetPolicySource cultureCsv = extracted(SourceType.CULTURE_CSV,
+                PolicyFields.builder().indoorAllowed(true).outdoorAllowed(false).build());
+
+        MergeResult result = PolicyMerger.merge(List.of(cultureCsv, goCamping));
+
+        assertThat(result.sourcePriority()).isEqualTo(SourceType.GOCAMPING);
+        assertThat(result.fields().getOutdoorAllowed()).isTrue();
+        // 고캠핑은 실내를 말하지 않아 문화정보원 값이 그대로 들어옴
+        assertThat(result.fields().getIndoorAllowed()).isTrue();
+        assertThat(result.hasConflict()).isTrue();
+        assertThat(result.conflicts()).hasSize(1);
+        assertThat(result.conflicts().getFirst().fieldName()).isEqualTo("outdoorAllowed");
+    }
+
+    @Test
+    @DisplayName("고캠핑은 불가능인데 문화정보원은 동반 가능이면 실외에서 갈린다 — 소풍정원 캠핑장")
+    void 고캠핑_불가능과_문화정보원_가능() {
+        // 문화정보원 동반 Y 는 범위를 채우지 않으므로 범위는 고캠핑만 말함 — 충돌 아님
+        // 실외는 고캠핑 false 대 문화정보원 Y 로 부딪힘
+        PetPolicySource goCamping = extracted(SourceType.GOCAMPING,
+                PolicyFields.builder().scope(Scope.NONE).indoorAllowed(false).outdoorAllowed(false).build());
         PetPolicySource cultureCsv = extracted(SourceType.CULTURE_CSV,
                 PolicyFields.builder().indoorAllowed(false).outdoorAllowed(true).build());
 
         MergeResult result = PolicyMerger.merge(List.of(cultureCsv, goCamping));
 
-        assertThat(result.fields().getIndoorAllowed()).isTrue();
-        assertThat(result.sourcePriority()).isEqualTo(SourceType.GOCAMPING);
+        assertThat(result.fields().getScope()).isEqualTo(Scope.NONE);
+        assertThat(result.fields().getOutdoorAllowed()).isFalse();
         assertThat(result.hasConflict()).isTrue();
-        assertThat(result.conflicts().getFirst().fieldName()).isEqualTo("indoorAllowed");
+        assertThat(result.conflicts()).hasSize(1);
+        assertThat(result.conflicts().getFirst().fieldName()).isEqualTo("outdoorAllowed");
     }
 
     @Test
@@ -174,7 +213,7 @@ class PolicyMergerRealDataTest {
         PetPolicySource petTour = extracted(SourceType.PET_TOUR,
                 PolicyFields.builder().scope(Scope.PARTIAL).build());
         PetPolicySource goCamping = extracted(SourceType.GOCAMPING,
-                PolicyFields.builder().indoorAllowed(false).outdoorAllowed(false).build());
+                PolicyFields.builder().scope(Scope.NONE).indoorAllowed(false).outdoorAllowed(false).build());
         PetPolicySource cultureCsv = extracted(SourceType.CULTURE_CSV,
                 PolicyFields.builder().indoorAllowed(false).outdoorAllowed(true).build());
 
@@ -189,11 +228,12 @@ class PolicyMergerRealDataTest {
         // 실외는 고캠핑과 문화정보원이 갈림. 고캠핑이 앞서므로 그 값이 남음
         assertThat(result.fields().getOutdoorAllowed()).isFalse();
         assertThat(result.hasConflict()).isTrue();
-        assertThat(result.conflicts()).hasSize(1);
 
-        MergeResult.FieldConflict conflict = result.conflicts().getFirst();
-        assertThat(conflict.fieldName()).isEqualTo("outdoorAllowed");
-        assertThat(conflict.sourceValues()).containsOnlyKeys("GOCAMPING", "CULTURE_CSV");
+        // 범위는 공사 일부 구역 대 고캠핑 동반 불가 · 실외는 고캠핑 대 문화정보원
+        assertThat(result.conflicts()).extracting(MergeResult.FieldConflict::fieldName)
+                .containsExactly("scope", "outdoorAllowed");
+        assertThat(result.conflicts().get(0).sourceValues()).containsOnlyKeys("PET_TOUR", "GOCAMPING");
+        assertThat(result.conflicts().get(1).sourceValues()).containsOnlyKeys("GOCAMPING", "CULTURE_CSV");
     }
 
     @Test
@@ -205,7 +245,7 @@ class PolicyMergerRealDataTest {
         PetPolicySource petTour = extracted(SourceType.PET_TOUR,
                 PolicyFields.builder().scope(Scope.PARTIAL).build());
         PetPolicySource goCamping = extracted(SourceType.GOCAMPING,
-                PolicyFields.builder().indoorAllowed(false).outdoorAllowed(false).build());
+                PolicyFields.builder().scope(Scope.NONE).indoorAllowed(false).outdoorAllowed(false).build());
         PetPolicySource cultureCsv = extracted(SourceType.CULTURE_CSV,
                 PolicyFields.builder().indoorAllowed(false).outdoorAllowed(true).build());
         PetPolicySource manual = PetPolicySource.corrected(PLACE_ID, SourceType.MANUAL,

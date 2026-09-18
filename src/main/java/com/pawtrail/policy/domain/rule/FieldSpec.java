@@ -105,7 +105,8 @@ public record FieldSpec<T>(
     public static final List<FieldSpec<?>> ALL = List.of(
             of("scope", "동반 범위", PolicyFields::getScope,
                     PolicyFields.PolicyFieldsBuilder::scope,
-                    named(Map.of("ALL_AREA", "전 구역", "PARTIAL", "일부 구역", "UNKNOWN", "알 수 없음"))),
+                    named(Map.of("ALL_AREA", "전 구역", "PARTIAL", "일부 구역", "NONE", "동반 불가",
+                            "UNKNOWN", "알 수 없음"))),
             of("guideDogOnly", "안내견 한정", PolicyFields::getGuideDogOnly,
                     PolicyFields.PolicyFieldsBuilder::guideDogOnly,
                     yesNo("안내견만 가능", "안내견 외에도 가능")),
