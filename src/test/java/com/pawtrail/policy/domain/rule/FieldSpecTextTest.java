@@ -37,6 +37,8 @@ class FieldSpecTextTest {
     void 열거_칸() {
         assertThat(FieldSpec.textOf("scope", "PARTIAL")).isEqualTo("일부 구역");
         assertThat(FieldSpec.textOf("scope", Scope.PARTIAL)).isEqualTo("일부 구역");
+        assertThat(FieldSpec.textOf("scope", "NONE")).isEqualTo("동반 불가");
+        assertThat(FieldSpec.textOf("scope", Scope.NONE)).isEqualTo("동반 불가");
         assertThat(FieldSpec.textOf("sizeRule", "SMALL_ONLY")).isEqualTo("소형견만");
     }
 

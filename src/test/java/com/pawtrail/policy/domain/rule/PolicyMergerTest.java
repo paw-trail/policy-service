@@ -182,6 +182,41 @@ class PolicyMergerTest {
     }
 
     @Test
+    @DisplayName("범위의 동반 불가도 다른 값과 같이 충돌로 잡고 앞선 값을 쓴다")
+    void 동반_불가도_충돌() {
+        // 한 출처는 일부 구역이 된다고 하고 다른 출처는 안 된다고 하는 자리
+        // 불가를 실내 · 실외에만 적던 때는 칸이 달라 여기서 충돌이 안 잡혔음
+        PetPolicySource petTour = extracted(SourceType.PET_TOUR,
+                PolicyFields.builder().scope(Scope.PARTIAL).build());
+        PetPolicySource goCamping = extracted(SourceType.GOCAMPING,
+                PolicyFields.builder().scope(Scope.NONE).build());
+
+        MergeResult result = PolicyMerger.merge(List.of(petTour, goCamping));
+
+        assertThat(result.fields().getScope()).isEqualTo(Scope.PARTIAL);
+        assertThat(result.hasConflict()).isTrue();
+        assertThat(result.conflicts()).hasSize(1);
+
+        MergeResult.FieldConflict conflict = result.conflicts().getFirst();
+        assertThat(conflict.fieldName()).isEqualTo("scope");
+        assertThat(conflict.sourceValues()).containsOnlyKeys("PET_TOUR", "GOCAMPING");
+    }
+
+    @Test
+    @DisplayName("두 출처가 모두 동반 불가라 하면 충돌이 아니고 동반 불가가 남는다")
+    void 둘_다_동반_불가() {
+        PetPolicySource goCamping = extracted(SourceType.GOCAMPING,
+                PolicyFields.builder().scope(Scope.NONE).indoorAllowed(false).outdoorAllowed(false).build());
+        PetPolicySource cultureCsv = extracted(SourceType.CULTURE_CSV,
+                PolicyFields.builder().scope(Scope.NONE).indoorAllowed(false).outdoorAllowed(false).build());
+
+        MergeResult result = PolicyMerger.merge(List.of(goCamping, cultureCsv));
+
+        assertThat(result.fields().getScope()).isEqualTo(Scope.NONE);
+        assertThat(result.hasConflict()).isFalse();
+    }
+
+    @Test
     @DisplayName("충돌한 칸만 기록하고 나머지는 남기지 않는다")
     void 충돌한_칸만_기록() {
         PetPolicySource petTour = extracted(SourceType.PET_TOUR,
