@@ -1,6 +1,7 @@
 package com.pawtrail.policy.domain.model;
 
 import com.pawtrail.common.entity.BaseEntity;
+import com.pawtrail.policy.domain.enums.ExtractionMethod;
 import com.pawtrail.policy.domain.enums.SourceType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -27,6 +28,9 @@ import org.hibernate.annotations.UuidGenerator;
  *
  * 소스마다 제 근거를 가지므로 병합에서 진 소스의 근거도 남습니다.
  * 어느 근거를 보일지는 pet_policy 의 field_sources 로 가립니다.
+ *
+ * 근거마다 규칙이 읽었는지 모델이 읽었는지도 남깁니다.
+ * 판정 화면이 이유마다 "공공데이터 항목" 과 "안내문을 AI 가 읽음" 을 가르는 재료입니다.
  */
 @Entity
 @Table(name = "policy_evidence")
@@ -72,14 +76,27 @@ public class PolicyEvidence extends BaseEntity {
     @Column(name = "segment_text", nullable = false, columnDefinition = "text")
     private String segmentText;
 
+    // 이 근거를 규칙이 읽었는지(RULE) 모델이 읽었는지(LLM)임
+    //
+    // 출처 행의 extraction_method 는 행 단위라 한 원문 안에서 칸마다 갈리면 MIXED 가 되어 칸을 못 가름
+    // 원문 키로도 못 가름 — 규칙과 모델이 함께 읽는 키가 있음 (공사 동반 가능 동물 · 문화정보원 크기 · 요금)
+    // 조각 번호로도 못 가름 — 모델 근거도 통째로 읽는 칸이면 비어 있음
+    // * null 은 V25 이전에 들어와 아직 다시 뽑지 않은 근거임
+    //   새 근거는 bulk 요청 검증이 RULE · LLM 둘만 받음
+    @Enumerated(EnumType.STRING)
+    @Column(name = "extraction_method", updatable = false, length = 10)
+    private ExtractionMethod extractionMethod;
+
     private PolicyEvidence(UUID placeId, SourceType source, String fieldName,
-                           String originField, Integer segmentIndex, String segmentText) {
+                           String originField, Integer segmentIndex, String segmentText,
+                           ExtractionMethod extractionMethod) {
         this.placeId = placeId;
         this.source = source;
         this.fieldName = fieldName;
         this.originField = originField;
         this.segmentIndex = segmentIndex;
         this.segmentText = segmentText;
+        this.extractionMethod = extractionMethod;
     }
 
     /**
@@ -88,9 +105,14 @@ public class PolicyEvidence extends BaseEntity {
      * 고치는 메서드를 두지 않았습니다.
      * 근거는 원문에서 뽑은 사실이라 고칠 일이 없고,
      * 재추출로 내용이 달라지면 그 소스의 근거를 통째로 지우고 새로 넣습니다.
+     *
+     * 추출 방식은 RULE · LLM 둘만 받습니다.
+     * MIXED 는 출처 행의 값이라 근거 한 줄에는 뜻이 없고, MANUAL 정정은 근거 없이 들어옵니다.
+     * 요청 검증이 먼저 막으므로 여기 걸리면 부르는 쪽 코드가 잘못된 것입니다.
      */
     public static PolicyEvidence of(UUID placeId, SourceType source, String fieldName,
-                                    String originField, Integer segmentIndex, String segmentText) {
+                                    String originField, Integer segmentIndex, String segmentText,
+                                    ExtractionMethod extractionMethod) {
         if (placeId == null || source == null) {
             throw new IllegalArgumentException("placeId 와 source 는 필수입니다.");
         }
@@ -103,7 +125,10 @@ public class PolicyEvidence extends BaseEntity {
         if (segmentText == null || segmentText.isBlank()) {
             throw new IllegalArgumentException("근거 문구는 비어 있을 수 없습니다.");
         }
+        if (extractionMethod != ExtractionMethod.RULE && extractionMethod != ExtractionMethod.LLM) {
+            throw new IllegalArgumentException("근거의 추출 방식은 RULE · LLM 만 됩니다.");
+        }
         return new PolicyEvidence(placeId, source, fieldName,
-                originField, segmentIndex, segmentText);
+                originField, segmentIndex, segmentText, extractionMethod);
     }
 }

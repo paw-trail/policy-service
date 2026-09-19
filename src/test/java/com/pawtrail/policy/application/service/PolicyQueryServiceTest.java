@@ -173,17 +173,21 @@ class PolicyQueryServiceTest extends IntegrationTestSupport {
         policyBulkService.upsert(request(
                 item(placeId, SourceType.PET_TOUR,
                         fieldsOf(PolicyFields.builder().scope(Scope.PARTIAL).build()),
-                        List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "공사 범위 근거"))),
+                        List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "공사 범위 근거", ExtractionMethod.RULE))),
                 item(placeId, SourceType.GOCAMPING,
                         fieldsOf(PolicyFields.builder()
                                 .indoorAllowed(false).outdoorAllowed(false).build()),
-                        List.of(new EvidenceRequest("indoorAllowed", "animalCmgCl", null, "고캠핑 실내 근거"),
-                                new EvidenceRequest("outdoorAllowed", "animalCmgCl", null, "고캠핑 실외 근거"))),
+                        List.of(new EvidenceRequest("indoorAllowed", "animalCmgCl", null, "고캠핑 실내 근거",
+                                        ExtractionMethod.RULE),
+                                new EvidenceRequest("outdoorAllowed", "animalCmgCl", null, "고캠핑 실외 근거",
+                                        ExtractionMethod.RULE))),
                 item(placeId, SourceType.CULTURE_CSV,
                         fieldsOf(PolicyFields.builder()
                                 .indoorAllowed(false).outdoorAllowed(true).build()),
-                        List.of(new EvidenceRequest("indoorAllowed", "indoorColumn", null, "문화정보원 실내 근거"),
-                                new EvidenceRequest("outdoorAllowed", "outdoorColumn", null, "문화정보원 실외 근거")))));
+                        List.of(new EvidenceRequest("indoorAllowed", "indoorColumn", null, "문화정보원 실내 근거",
+                                        ExtractionMethod.RULE),
+                                new EvidenceRequest("outdoorAllowed", "outdoorColumn", null, "문화정보원 실외 근거",
+                                        ExtractionMethod.RULE)))));
         clear();
 
         PolicyBatchOutput output = policyQueryService.findByPlaceIds(List.of(placeId)).getFirst();
@@ -192,6 +196,28 @@ class PolicyQueryServiceTest extends IntegrationTestSupport {
         assertThat(output.hasConflict()).isTrue();
         assertThat(output.evidence()).extracting(EvidenceOutput::segmentText)
                 .containsExactly("공사 범위 근거", "고캠핑 실내 근거", "고캠핑 실외 근거");
+    }
+
+    @Test
+    @DisplayName("근거 줄마다 추출 방식이 그대로 실린다")
+    void 근거_줄에_추출_방식이_실린다() {
+        // 판정 화면이 이유마다 "공공데이터 항목" 과 "안내문을 AI 가 읽음" 을 가르는 재료임
+        UUID placeId = UUID.randomUUID();
+        policyBulkService.upsert(request(item(placeId, SourceType.PET_TOUR,
+                fieldsOf(PolicyFields.builder().scope(Scope.PARTIAL).excludedZones(List.of("실내")).build()),
+                List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "일부구역 동반가능",
+                                ExtractionMethod.RULE),
+                        new EvidenceRequest("excludedZones", "etcAcmpyInfo", 1, "실내 동반 불가",
+                                ExtractionMethod.LLM)))));
+        clear();
+
+        PolicyBatchOutput output = policyQueryService.findByPlaceIds(List.of(placeId)).getFirst();
+
+        assertThat(output.evidence())
+                .extracting(EvidenceOutput::fieldName, EvidenceOutput::extractionMethod)
+                .containsExactly(
+                        tuple("scope", ExtractionMethod.RULE),
+                        tuple("excludedZones", ExtractionMethod.LLM));
     }
 
     @Test
@@ -204,11 +230,13 @@ class PolicyQueryServiceTest extends IntegrationTestSupport {
                 item(placeId, SourceType.PET_TOUR,
                         fieldsOf(PolicyFields.builder()
                                 .excludedZones(List.of("실내", "잔디")).build()),
-                        List.of(new EvidenceRequest("excludedZones", "etcAcmpyInfo", null, "공사 구역 근거"))),
+                        List.of(new EvidenceRequest("excludedZones", "etcAcmpyInfo", null, "공사 구역 근거",
+                                        ExtractionMethod.LLM))),
                 item(placeId, SourceType.GOCAMPING,
                         fieldsOf(PolicyFields.builder()
                                 .excludedZones(List.of("실내")).build()),
-                        List.of(new EvidenceRequest("excludedZones", "animalCmgCl", null, "고캠핑 구역 근거")))));
+                        List.of(new EvidenceRequest("excludedZones", "animalCmgCl", null, "고캠핑 구역 근거",
+                                        ExtractionMethod.RULE)))));
         clear();
 
         PolicyBatchOutput output = policyQueryService.findByPlaceIds(List.of(placeId)).getFirst();
@@ -226,7 +254,8 @@ class PolicyQueryServiceTest extends IntegrationTestSupport {
         policyBulkService.upsert(request(
                 item(placeId, SourceType.PET_TOUR,
                         fieldsOf(PolicyFields.builder().scope(Scope.PARTIAL).build()),
-                        List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "공사 범위 근거")))));
+                        List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "공사 범위 근거",
+                                        ExtractionMethod.RULE)))));
 
         // 관리자 정정 API 는 이슈 ⑥ 이라 아직 없음
         // 정정 행을 직접 넣고 병합을 부름 — 병합은 부르는 쪽 트랜잭션에 참여함
@@ -253,13 +282,16 @@ class PolicyQueryServiceTest extends IntegrationTestSupport {
         policyBulkService.upsert(request(
                 item(placeId, SourceType.CULTURE_CSV,
                         fieldsOf(PolicyFields.builder().excludedZones(List.of("잔디")).build()),
-                        List.of(new EvidenceRequest("excludedZones", "zoneColumn", null, "문화정보원 구역"))),
+                        List.of(new EvidenceRequest("excludedZones", "zoneColumn", null, "문화정보원 구역",
+                                        ExtractionMethod.RULE))),
                 item(placeId, SourceType.PET_TOUR,
                         fieldsOf(PolicyFields.builder()
                                 .scope(Scope.PARTIAL).excludedZones(List.of("실내")).build()),
-                        List.of(new EvidenceRequest("excludedZones", "etcAcmpyInfo", 1, "공사 구역 둘째"),
-                                new EvidenceRequest("scope", "acmpyTypeCd", null, "공사 범위"),
-                                new EvidenceRequest("excludedZones", "etcAcmpyInfo", 0, "공사 구역 첫째")))));
+                        List.of(new EvidenceRequest("excludedZones", "etcAcmpyInfo", 1, "공사 구역 둘째",
+                                        ExtractionMethod.LLM),
+                                new EvidenceRequest("scope", "acmpyTypeCd", null, "공사 범위", ExtractionMethod.RULE),
+                                new EvidenceRequest("excludedZones", "etcAcmpyInfo", 0, "공사 구역 첫째",
+                                        ExtractionMethod.LLM)))));
         clear();
 
         PolicyBatchOutput output = policyQueryService.findByPlaceIds(List.of(placeId)).getFirst();

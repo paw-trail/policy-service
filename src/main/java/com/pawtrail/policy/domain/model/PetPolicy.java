@@ -104,7 +104,7 @@ public class PetPolicy extends BaseEntity {
     //   근거 문구는 카드 한 줄 · 항목별 이유로 화면에 나가므로 조건 값이 같아도 달라진 것임
     //   적재는 근거를 지운 뒤 다시 넣고 청크 끝에 재병합하므로 재병합 시점에는 옛 근거가 없음
     //   그래서 옛 근거 대신 그때 뜬 지문을 남겨 둠
-    // * null 은 V24 이전에 만들어져 아직 다시 병합되지 않은 행임
+    // * null 은 V24 이전에 만들어졌거나 V25 가 지문 공식을 바꾸며 비운 행임
     //   비교할 옛 지문이 없으므로 처음 한 번은 지문만 채우고 판은 올리지 않음
     @Column(name = "evidence_digest", length = 64)
     private String evidenceDigest;
@@ -169,7 +169,7 @@ public class PetPolicy extends BaseEntity {
      *
      * 칸별 승자와 근거 지문은 판과 상관없이 늘 덮어씁니다.
      * 승자는 값이 같아도 바뀔 수 있고 batch 가 그것으로 근거를 고릅니다.
-     * 지문은 V24 이전 행처럼 판을 올리지 않고 채우기만 하는 경우가 있습니다.
+     * 지문은 V24 이전 행이나 V25 가 비운 행처럼 판을 올리지 않고 채우기만 하는 경우가 있습니다.
      *
      * @param evidenceDigest batch 가 내보낼 근거의 지문. AdoptedEvidence.digest 가 만든 값
      * @param changed        batch 가 내보내는 것이 이전과 달라졌는지

@@ -97,7 +97,7 @@ policy_db
 | `pet` | 보내고 받음 |
 | `policy` | 보내기만 함 |
 
-표를 만드는 것은 공통 모듈의 `V1__outbox.sql` · `V2__inbox.sql` 과 이 레포의 `V20` ~ `V24` 5개입니다.
+표를 만드는 것은 공통 모듈의 `V1__outbox.sql` · `V2__inbox.sql` 과 이 레포의 `V20` ~ `V25` 6개입니다.
 
 ---
 
@@ -796,18 +796,28 @@ SELECT 1 FROM pg_advisory_xact_lock(hashtextextended(CAST(:placeId AS text), 0))
 
 ```
 고르기     칸마다 이긴 출처의 근거만 (3-5 의 field_sources 로 거름)
-늘어놓기   조건 순서 → 출처 순서 → 조각 번호 → 원문 필드 → 문구
+늘어놓기   조건 순서 → 출처 순서 → 조각 번호 → 원문 필드 → 문구 → 추출 방식
 지문      위 목록을 SHA-256 으로.  16진수 64자
+          근거 한 줄의 여섯 값 — 칸 · 출처 · 원문 필드 · 조각 번호 · 문구 · 추출 방식
 ```
 
 | 자리 | 이유 |
 |---|---|
 | `batch` 와 재병합이 같은 클래스(`AdoptedEvidence`)로 고름 | 2곳이 고르는 규칙이나 순서를 따로 가지면 같은 근거에서 지문이 달라져, 안 바뀐 재병합에서 판이 오르거나 바뀐 근거를 놓침 |
-| 순서를 문구까지 끝까지 못 박음 | 앞 기준이 같은 근거가 둘이면 DB 가 돌려준 순서가 남는데 그 순서는 보장되지 않음 |
+| 순서를 추출 방식까지 끝까지 못 박음 | 앞 기준이 같은 근거가 둘이면 DB 가 돌려준 순서가 남는데 그 순서는 보장되지 않음. 규칙과 모델이 같은 원문 칸의 같은 문구를 대면 방식만 다른 두 줄이 생김 |
 | 칸별 승자는 따로 비교하지 않음 | 내보내는 것은 승자가 아니라 승자의 근거이고, 지문이 그것을 이미 담음 |
 
-⚠**지문이 비어 있는 행은 이번에 채우기만 하고 판을 올리지 않습니다.** 지문 컬럼(V24)보다 먼저 만들어진 행이라
-비교할 옛 지문이 없기 때문입니다. 그 행들을 전부 한 번씩 올리면 근거가 그대로인 장소에도 이벤트가 나갑니다.
+⚠**지문이 비어 있는 행은 이번에 채우기만 하고 판을 올리지 않습니다.** 지문 컬럼(V24)보다 먼저 만들어졌거나
+V25 가 지문 공식을 바꾸며 비운 행이라 비교할 옛 지문이 없기 때문입니다. 그 행들을 전부 한 번씩 올리면
+근거가 그대로인 장소에도 이벤트가 나갑니다.
+
+---
+
+**추출 방식도 지문에 들어갑니다 (V25).** `batch` 가 근거 줄마다 규칙이 읽었는지 모델이 읽었는지를 내보내므로,
+문구는 그대로이고 방식만 바뀐 재추출에서도 판이 올라야 판정 화면의 출처 표시가 따라 바뀝니다.
+
+공식이 바뀌면 옛 지문은 새 공식과 늘 달라집니다. 그대로 두면 다음 재병합에서 모든 장소의 판이 한꺼번에 오르므로,
+V25 가 옛 지문을 비워 위 규칙대로 한 번은 채우기만 하게 했습니다.
 
 ---
 
@@ -951,7 +961,8 @@ POST /api/v1/admin/policies/outbox/{outboxId}/retry     한 건을 다시 보냄
           "fieldName": "scope",
           "originField": "acmpyTypeCd",
           "segmentIndex": null,
-          "segmentText": "일부구역 동반가능"
+          "segmentText": "일부구역 동반가능",
+          "extractionMethod": "RULE"
         }
       ],
       "conflicts": [],
@@ -967,9 +978,10 @@ POST /api/v1/admin/policies/outbox/{outboxId}/retry     한 건을 다시 보냄
 | `promptVersion` · `extractedAt` | 청크 공통. 이번 추출의 프롬프트 판과 시작 시각 |
 | `items[].source` | `PET_TOUR` · `GOCAMPING` · `CULTURE_CSV` 중 하나 |
 | `items[].fields` | 조건 20칸. **빠진 칸은 `null` 로 들어감** — 그 출처의 한 벌을 통째로 갈아 끼움 |
-| `items[].evidence` | 근거. 칸 이름 · 원문 필드 · 조각 번호 · 문구 |
+| `items[].evidence` | 근거. 칸 이름 · 원문 필드 · 조각 번호 · 문구 · 추출 방식 |
+| `items[].evidence[].extractionMethod` | 그 근거를 규칙이 읽었는지(`RULE`) 모델이 읽었는지(`LLM`). 둘만 받음. 판정 화면이 이유마다 출처를 가르는 재료 |
 | `items[].conflicts` | 한 출처 안 충돌만. `sourceValues` 는 `field` · `text` 두 키 |
-| `items[].extractionMethod` | `RULE` · `LLM` · `MIXED` · `MANUAL`. 건마다 갈릴 수 있음 |
+| `items[].extractionMethod` | `RULE` · `LLM` · `MIXED` · `MANUAL`. 건마다 갈릴 수 있음. 출처 행 단위라 칸마다 갈리면 `MIXED` — 근거마다의 방식은 근거 줄이 말함 |
 
 응답은 `{"accepted": 1, "merged": 1}` 입니다. 받아 넣은 항목 수와 다시 합친 장소 수이며,
 같은 장소에 출처가 여럿 들어오면 병합은 장소당 한 번이라 뒤가 더 작은 것이 정상입니다.
@@ -987,6 +999,7 @@ POST /api/v1/admin/policies/outbox/{outboxId}/retry     한 건을 다시 보냄
 | `extractedAt` · `placeId` · `source` · `fields` · `extractionMethod` 가 없음 | 400 `VALIDATION_FAILED` |
 | `source` 가 `MANUAL` · `OWNER` | 400 `POLICY_SOURCE_NOT_ALLOWED`. 사람이 정한 값은 관리자 API 로만 |
 | 근거 · 충돌의 `fieldName` 이 20칸 이름이 아님 | 400 `VALIDATION_FAILED` |
+| 근거 줄의 `extractionMethod` 가 없거나 `RULE` · `LLM` 이 아님 | 400 `VALIDATION_FAILED`. `extract` `v0.1.0` 은 이 칸을 보내지 않아 이 판부터 막힘 |
 | 한 출처 안 충돌의 값이 `field` · `text` 두 키가 아니거나 비었음 | 400 `VALIDATION_FAILED` |
 | `maxWeightKg` 가 0 이하 · 정수 3자리나 소수 2자리를 넘음 · `maxCount` 가 1 미만 · `extraFeeAmount` 가 음수 | 400 `VALIDATION_FAILED` |
 
@@ -1063,6 +1076,7 @@ curl -s -X POST "http://localhost:8085/internal/policies/bulk" \
 | 순서 · 중복 · `null` | 요청 순서대로. 중복과 `null` 은 걸러 냄. 빈 목록이면 빈 결과 |
 | `fields` | 20칸을 `null` 까지 늘 전부 실음 |
 | `evidence` | 칸마다 그 값을 만든 출처의 근거만 — [3-5](#3-5-칸마다-누가-이겼는지-적어-둡니다) |
+| `evidence[].extractionMethod` | 규칙이 읽었는지(`RULE`) 모델이 읽었는지(`LLM`). V25 이전에 들어와 아직 다시 뽑지 않은 근거는 `null` |
 | `correctionSource` | 정정 행이 이긴 장소면 `MANUAL` · `OWNER`, 공공 병합이면 `null`. 정정 사유는 싣지 않음 |
 | 400 | `placeIds` 가 없거나 500곳을 넘음 |
 
@@ -1328,7 +1342,7 @@ Tomcat 은 요청 줄과 헤더를 8KB 까지만 받습니다.
 | `has_conflict` | 충돌 배지. 세는 범위는 [3-6](#3-6-충돌을-세는-범위) |
 | `source_priority` | 이번 병합에서 가장 윗 티어로 이긴 출처 |
 | `field_sources` | jsonb. 칸마다 그 값을 만든 출처 목록 — [3-5](#3-5-칸마다-누가-이겼는지-적어-둡니다) |
-| `evidence_digest` | 근거 지문 64자. 지문 컬럼이 생기기 전의 행은 `null` — [4-2](#4-2-근거-문구만-바뀌어도-판이-오릅니다) |
+| `evidence_digest` | 근거 지문 64자. 지문 컬럼이 생기기 전의 행이나 V25 가 비운 행은 `null` — [4-2](#4-2-근거-문구만-바뀌어도-판이-오릅니다) |
 | `policy_version` | 판 — [4-1](#4-1-판은-받는-쪽이-새로-읽어야-하는가-입니다) |
 | `merged_at` | 합친 시각 |
 | 감사 컬럼 · `deleted_*` | 공통 |
@@ -1354,9 +1368,20 @@ Tomcat 은 요청 줄과 헤더를 8KB 까지만 받습니다.
 | `origin_field` | 원문의 어느 필드에서 나왔는지. 예) `acmpyTypeCd` |
 | `segment_index` | 원문을 조각냈을 때 몇 번째 조각인지. 쪼갤 것이 없으면 `null` |
 | `segment_text` | 근거 문구 |
+| `extraction_method` | 규칙이 읽었는지(`RULE`) 모델이 읽었는지(`LLM`). `null` 은 V25 이전 근거 — 그 출처를 다시 뽑으면 채워짐 |
 
 **적재할 때 그 출처의 근거를 지우고 다시 넣습니다.** 출처별로 갈아 끼우므로 병합에서 진 출처의 근거도 남아 있고,
 `batch` 는 [3-5](#3-5-칸마다-누가-이겼는지-적어-둡니다)의 `field_sources` 로 이긴 출처의 것만 고릅니다.
+
+---
+
+**추출 방식을 근거 줄마다 두는 이유**입니다. 다른 값으로는 어느 근거를 모델이 읽었는지 가를 수 없습니다.
+
+| 가를 수 없는 값 | 까닭 |
+|---|---|
+| `pet_policy_source.extraction_method` | 출처 행 단위라 한 원문 안에서 칸마다 규칙과 모델이 갈리면 `MIXED` |
+| `origin_field` | 규칙과 모델이 함께 읽는 원문 키가 있음 — 공사 동반 가능 동물 · 문화정보원 크기 · 추가 요금 |
+| `segment_index` | 모델 근거도 통째로 읽는 칸이면 비어 있음 |
 
 ---
 
@@ -1416,6 +1441,7 @@ DB 에서 읽은 `before_value` · `after_value` · `source_values` · `field_so
 | `V22__pet_policy_field_sources.sql` | `pet_policy.field_sources` 추가 |
 | `V23__policy_conflict_drop_resolved.sql` | `policy_conflict.resolved` 삭제. 참으로 만드는 길이 없던 컬럼 |
 | `V24__pet_policy_evidence_digest.sql` | `pet_policy.evidence_digest` 추가. `policy_version` 의 뜻이 근거까지 넓어짐 |
+| `V25__policy_evidence_extraction_method.sql` | `policy_evidence.extraction_method` 추가. 지문 공식이 바뀌어 옛 `evidence_digest` 를 비움 |
 
 `V1` ~ `V19` 는 공통 모듈의 대역이라 이 서비스는 `V20` 부터 씁니다. 공통 모듈이 나중에 낮은 번호를 더해도
 실행되도록 설정에서 `out-of-order` 를 켜 두었습니다.
@@ -2144,7 +2170,7 @@ curl -s "http://localhost:8888/policy-service/local"
 | 증상 | 뜻 |
 |---|---|
 | 같은 청크를 다시 넣었는데 판이 그대로 | 정상. 내보내는 것이 안 바뀌면 판도 이벤트도 그대로 |
-| 근거만 고쳤는데 첫 번에는 판이 안 오름 | 지문 컬럼(`V24`)이 생기기 전의 행이라 이번에는 지문을 채우기만 함. 다음 변경부터 오름 |
+| 근거만 고쳤는데 첫 번에는 판이 안 오름 | 지문 컬럼(`V24`)이 생기기 전의 행이거나 `V25` 가 지문을 비운 행이라 이번에는 지문을 채우기만 함. 다음 변경부터 오름 |
 | 한쪽 출처에만 값이 있는데 배지가 안 붙음 | 정상. 값끼리 다를 때만 충돌 |
 | 한 출처 안 충돌 행이 있는데 배지가 꺼져 있음 | 정정 행이 이긴 장소. 참여하지 않은 출처의 충돌은 세지 않음 — [3-6](#3-6-충돌을-세는-범위) |
 | 판은 올랐는데 `policy.changed` 가 안 보임 | 발행 쪽 문제 — [9-3](#9-3-policychanged-가-안-나갈-때) |
