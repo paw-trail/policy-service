@@ -262,12 +262,12 @@ class PolicyBulkServiceTest extends IntegrationTestSupport {
         UUID placeId = UUID.randomUUID();
         policyBulkService.upsert(request(item(placeId, SourceType.PET_TOUR,
                 PolicyFieldsRequestFixture.scope(Scope.PARTIAL),
-                List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "전구역 동반가능")),
+                List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "전구역 동반가능", ExtractionMethod.RULE)),
                 List.of())));
 
         policyBulkService.upsert(request(item(placeId, SourceType.PET_TOUR,
                 PolicyFieldsRequestFixture.scope(Scope.PARTIAL),
-                List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "일부구역 동반가능")),
+                List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "일부구역 동반가능", ExtractionMethod.RULE)),
                 List.of())));
 
         List<PolicyEvidence> evidences = policyEvidenceRepository.findByPlaceId(placeId);
@@ -282,17 +282,17 @@ class PolicyBulkServiceTest extends IntegrationTestSupport {
         policyBulkService.upsert(request(
                 item(placeId, SourceType.PET_TOUR,
                         PolicyFieldsRequestFixture.scope(Scope.PARTIAL),
-                        List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "공사 근거")),
+                        List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "공사 근거", ExtractionMethod.RULE)),
                         List.of()),
                 item(placeId, SourceType.GOCAMPING,
                         PolicyFieldsRequestFixture.sizeRule(SizeRule.SMALL_ONLY),
-                        List.of(new EvidenceRequest("sizeRule", "animalCmgCl", null, "고캠핑 근거")),
+                        List.of(new EvidenceRequest("sizeRule", "animalCmgCl", null, "고캠핑 근거", ExtractionMethod.RULE)),
                         List.of())));
 
         // 공사만 다시 보냄
         policyBulkService.upsert(request(item(placeId, SourceType.PET_TOUR,
                 PolicyFieldsRequestFixture.scope(Scope.ALL_AREA),
-                List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "공사 새 근거")),
+                List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "공사 새 근거", ExtractionMethod.RULE)),
                 List.of())));
 
         List<PolicyEvidence> evidences = policyEvidenceRepository.findByPlaceId(placeId);
@@ -375,7 +375,7 @@ class PolicyBulkServiceTest extends IntegrationTestSupport {
         assertThatThrownBy(() -> policyBulkService.upsert(request(
                 item(first, SourceType.PET_TOUR,
                         PolicyFieldsRequestFixture.scope(Scope.PARTIAL),
-                        List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "일부구역")),
+                        List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "일부구역", ExtractionMethod.RULE)),
                         List.of(new ConflictRequest("scope",
                                 Map.of("field", "Y", "text", "불가")))),
                 item(second, SourceType.OWNER,

@@ -146,7 +146,8 @@ public class PolicyBulkService {
         for (EvidenceRequest evidence : requests) {
             evidences.add(PolicyEvidence.of(
                     item.placeId(), item.source(), evidence.fieldName(),
-                    evidence.originField(), evidence.segmentIndex(), evidence.segmentText()));
+                    evidence.originField(), evidence.segmentIndex(), evidence.segmentText(),
+                    evidence.extractionMethod()));
         }
         policyEvidenceRepository.saveAll(evidences);
     }

@@ -1,5 +1,6 @@
 package com.pawtrail.policy.domain.rule;
 
+import com.pawtrail.policy.domain.enums.ExtractionMethod;
 import com.pawtrail.policy.domain.enums.SourceType;
 import com.pawtrail.policy.domain.model.PolicyEvidence;
 import java.nio.charset.StandardCharsets;
@@ -25,13 +26,17 @@ public final class AdoptedEvidence {
     /**
      * 근거를 늘어놓는 순서입니다.
      *
-     * 조건 순서 → 소스 순서 → 조각 번호 → 원문 필드 → 문구입니다.
+     * 조건 순서 → 소스 순서 → 조각 번호 → 원문 필드 → 문구 → 추출 방식입니다.
      * 소스 열거값의 순서가 공공 우선순위와 같아 목록 칸에서는 앞선 소스의 근거가 먼저 옵니다.
      * 조각 번호가 없는 근거(쪼갤 것이 없는 필드)는 같은 소스 안에서 앞에 둡니다.
      *
      * 원문 필드와 문구까지 비교하는 것은 순서를 끝까지 못 박기 위해서입니다.
      * 앞의 셋이 같은 근거가 둘이면 데이터베이스가 돌려준 순서가 그대로 남는데 그 순서는 보장되지 않습니다.
      * 그러면 같은 근거에서 지문이 달라지고, 같은 장소를 두 번 물었을 때 응답 순서도 달라집니다.
+     *
+     * 추출 방식이 마지막인 것도 같은 까닭입니다.
+     * 규칙과 모델이 같은 원문 칸의 같은 문구를 근거로 대면 앞의 다섯이 모두 같은 두 줄이 생깁니다.
+     * 비어 있는 방식(V25 이전 근거)은 앞에 둡니다.
      */
     public static final Comparator<PolicyEvidence> ORDER =
             Comparator.comparingInt((PolicyEvidence evidence) -> FieldSpec.orderOf(evidence.getFieldName()))
@@ -41,7 +46,9 @@ public final class AdoptedEvidence {
                     .thenComparing(PolicyEvidence::getOriginField,
                             Comparator.nullsFirst(Comparator.<String>naturalOrder()))
                     .thenComparing(PolicyEvidence::getSegmentText,
-                            Comparator.nullsFirst(Comparator.<String>naturalOrder()));
+                            Comparator.nullsFirst(Comparator.<String>naturalOrder()))
+                    .thenComparing(PolicyEvidence::getExtractionMethod,
+                            Comparator.nullsFirst(Comparator.<ExtractionMethod>naturalOrder()));
 
     private AdoptedEvidence() {
     }
@@ -72,7 +79,9 @@ public final class AdoptedEvidence {
     /**
      * 고른 근거의 지문을 뜹니다. SHA-256 을 소문자 16진수 64자로 돌려줍니다.
      *
-     * batch 가 근거 한 줄에 싣는 다섯 값만 담습니다.
+     * batch 가 근거 한 줄에 싣는 여섯 값만 담습니다.
+     * 추출 방식은 V25 에서 더했습니다. 판정 화면의 출처 표시가 달라지므로 방식만 바뀌어도 판이 올라야 합니다.
+     * 공식이 바뀌면 옛 지문이 전부 새 것과 달라지므로, V25 가 옛 지문을 비워 판이 한꺼번에 오르지 않게 했습니다.
      * 식별자나 만든 시각은 넣지 않습니다. 적재는 근거를 지우고 다시 넣으므로 그 값들은
      * 같은 근거를 다시 보내도 달라지고, 그러면 아무것도 안 바뀐 재병합에서 판이 오릅니다.
      *
@@ -95,6 +104,8 @@ public final class AdoptedEvidence {
             append(canonical, evidence.getSegmentIndex() == null
                     ? null : evidence.getSegmentIndex().toString());
             append(canonical, evidence.getSegmentText());
+            append(canonical, evidence.getExtractionMethod() == null
+                    ? null : evidence.getExtractionMethod().name());
             canonical.append('\n');
         }
         return sha256(canonical.toString());
