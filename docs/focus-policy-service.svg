@@ -21,11 +21,11 @@
 <text x="1560" y="290" font-size="12" font-weight="normal" text-anchor="middle" fill="#4B5563">소스별 조건 · 합친 조건 · 근거 · 충돌 · 정정 이력</text>
 <text x="1560" y="306" font-size="12" font-weight="normal" text-anchor="middle" fill="#4B5563">표 5개 + outbox · inbox</text>
 <text x="1560" y="322" font-size="12" font-weight="normal" text-anchor="middle" fill="#4B5563">조건 20칸 — null 은 정보 없음</text>
-<rect x="1410.0" y="565.0" width="300" height="110" rx="12" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="2.2" stroke-dasharray="9,7"/>
+<rect x="1410.0" y="565.0" width="300" height="110" rx="12" fill="#F0FDF4" stroke="#86EFAC" stroke-width="2.2"/>
 <text x="1560" y="590" font-size="17" font-weight="bold" text-anchor="middle" fill="#111827">extract-service</text>
 <text x="1560" y="610" font-size="12" font-weight="normal" text-anchor="middle" fill="#4B5563">원문에서 동반 조건을 뽑아</text>
 <text x="1560" y="626" font-size="12" font-weight="normal" text-anchor="middle" fill="#4B5563">소스마다 한 벌씩 넣음</text>
-<text x="1560" y="642" font-size="12" font-weight="normal" text-anchor="middle" fill="#4B5563">아직 없음</text>
+<text x="1560" y="642" font-size="12" font-weight="normal" text-anchor="middle" fill="#4B5563">규칙 + 모델 두 번 읽기</text>
 <rect x="60.0" y="650.0" width="240" height="100" rx="12" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="2.2" stroke-dasharray="9,7"/>
 <text x="180" y="670" font-size="17" font-weight="bold" text-anchor="middle" fill="#111827">verdict-service</text>
 <text x="180" y="690" font-size="12" font-weight="normal" text-anchor="middle" fill="#4B5563">판정할 때 조건 20칸과</text>
@@ -50,8 +50,8 @@
 <text x="1200" y="205" font-size="13" font-weight="normal" text-anchor="middle" fill="#6366F1">등록</text>
 <polyline points="1000.0,450 1120,450 1120,300 1410.0,300" fill="none" stroke="#F97316" stroke-width="2.4" marker-end="url(#ah-F97316)"/>
 <rect x="1101" y="366" width="198" height="19" rx="4" fill="#FFFFFF" opacity="0.92"/>
-<text x="1200" y="378" font-size="13" font-weight="normal" text-anchor="middle" fill="#F97316">JPA · Flyway V20~24 · 장소 잠금</text>
-<polyline points="1410,590 1260,590 1260,470 1000,470" fill="none" stroke="#16A34A" stroke-width="2.4" marker-end="url(#ah-16A34A)" stroke-dasharray="7,6"/>
+<text x="1200" y="378" font-size="13" font-weight="normal" text-anchor="middle" fill="#F97316">JPA · Flyway V20~25 · 장소 잠금</text>
+<polyline points="1410,590 1260,590 1260,470 1000,470" fill="none" stroke="#16A34A" stroke-width="2.4" marker-end="url(#ah-16A34A)"/>
 <rect x="1268" y="533" width="301" height="19" rx="4" fill="#FFFFFF" opacity="0.92"/>
 <text x="1272" y="545" font-size="13" font-weight="normal" text-anchor="start" fill="#16A34A">POST /internal/policies/bulk   청크 100 · 상한 500</text>
 <polyline points="300.0,700 480,700 480,480 640,480" fill="none" stroke="#16A34A" stroke-width="2.4" marker-end="url(#ah-16A34A)" stroke-dasharray="7,6"/>
