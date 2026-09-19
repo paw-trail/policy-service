@@ -1,5 +1,6 @@
 package com.pawtrail.policy.application.dto.output;
 
+import com.pawtrail.policy.domain.enums.ExtractionMethod;
 import com.pawtrail.policy.domain.enums.SourceType;
 import com.pawtrail.policy.domain.model.PolicyEvidence;
 
@@ -15,13 +16,17 @@ import com.pawtrail.policy.domain.model.PolicyEvidence;
  * @param originField  원문의 어느 필드에서 뽑았는지. 소스가 쓰는 이름 그대로
  * @param segmentIndex 그 필드 안에서 몇 번째 조각인지. 쪼갤 것이 없으면 null
  * @param segmentText  근거 문구 자체
+ * @param extractionMethod 규칙이 읽었는지(RULE) 모델이 읽었는지(LLM).
+ *                     verdict 가 판정 이유마다 "공공데이터 항목" 과 "안내문을 AI 가 읽음" 을 가름.
+ *                     V25 이전에 들어와 아직 다시 뽑지 않은 근거는 null
  */
 public record EvidenceOutput(
         String fieldName,
         SourceType source,
         String originField,
         Integer segmentIndex,
-        String segmentText
+        String segmentText,
+        ExtractionMethod extractionMethod
 ) {
 
     public static EvidenceOutput from(PolicyEvidence evidence) {
@@ -30,7 +35,8 @@ public record EvidenceOutput(
                 evidence.getSource(),
                 evidence.getOriginField(),
                 evidence.getSegmentIndex(),
-                evidence.getSegmentText()
+                evidence.getSegmentText(),
+                evidence.getExtractionMethod()
         );
     }
 }

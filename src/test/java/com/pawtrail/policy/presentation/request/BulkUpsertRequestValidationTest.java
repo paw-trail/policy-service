@@ -50,7 +50,7 @@ class BulkUpsertRequestValidationTest {
     @DisplayName("조건 스무 칸의 이름이면 통과한다")
     void 알려진_이름은_통과한다() {
         BulkUpsertRequest request = request(
-                List.of(new EvidenceRequest("maxWeightKg", "etcAcmpyInfo", 0, "10kg 이하")),
+                List.of(new EvidenceRequest("maxWeightKg", "etcAcmpyInfo", 0, "10kg 이하", ExtractionMethod.LLM)),
                 List.of(new ConflictRequest("sizeRule", Map.of("field", "가능", "text", "불가"))));
 
         assertThat(validator.validate(request)).isEmpty();
@@ -61,8 +61,8 @@ class BulkUpsertRequestValidationTest {
     void 모르는_근거_이름은_막힌다() {
         // 한 청크에 근거가 여럿이어도 어느 것이 틀렸는지 경로로 찾을 수 있어야 함
         BulkUpsertRequest request = request(
-                List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "일부구역 동반가능"),
-                        new EvidenceRequest("maxWeight", "etcAcmpyInfo", 0, "10kg 이하")),
+                List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "일부구역 동반가능", ExtractionMethod.RULE),
+                        new EvidenceRequest("maxWeight", "etcAcmpyInfo", 0, "10kg 이하", ExtractionMethod.LLM)),
                 List.of());
 
         Set<ConstraintViolation<BulkUpsertRequest>> violations = validator.validate(request);
@@ -78,7 +78,7 @@ class BulkUpsertRequestValidationTest {
         // 주석이 "pet_policy 의 컬럼 이름" 이라고 적혀 있던 자리임
         // 그 말대로 보내면 조건과 근거가 이름으로 안 이어져 근거가 빠짐
         BulkUpsertRequest request = request(
-                List.of(new EvidenceRequest("max_weight_kg", "etcAcmpyInfo", 0, "10kg 이하")),
+                List.of(new EvidenceRequest("max_weight_kg", "etcAcmpyInfo", 0, "10kg 이하", ExtractionMethod.LLM)),
                 List.of());
 
         assertThat(validator.validate(request)).hasSize(1);
@@ -103,7 +103,7 @@ class BulkUpsertRequestValidationTest {
     void 비어_있으면_오류가_하나다() {
         // 비어 있는 이름을 이름 검사까지 막으면 같은 자리에 오류가 둘 뜸
         BulkUpsertRequest request = request(
-                List.of(new EvidenceRequest(" ", "etcAcmpyInfo", 0, "10kg 이하")),
+                List.of(new EvidenceRequest(" ", "etcAcmpyInfo", 0, "10kg 이하", ExtractionMethod.LLM)),
                 List.of());
 
         Set<ConstraintViolation<BulkUpsertRequest>> violations = validator.validate(request);
@@ -165,6 +165,38 @@ class BulkUpsertRequestValidationTest {
                 List.of(new ConflictRequest("scope", Map.of("field", "가능", "text", " "))));
 
         assertThat(validator.validate(request)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("근거 줄에 추출 방식이 없으면 그 근거를 가리켜 막는다")
+    void 추출_방식이_없으면_막힌다() {
+        // 빠진 채 쌓이면 판정 화면이 그 근거를 규칙이 읽었는지 모델이 읽었는지 못 밝힘
+        BulkUpsertRequest request = request(
+                List.of(new EvidenceRequest("maxWeightKg", "etcAcmpyInfo", 0, "10kg 이하", null)),
+                List.of());
+
+        Set<ConstraintViolation<BulkUpsertRequest>> violations = validator.validate(request);
+
+        assertThat(violations).hasSize(1);
+        assertThat(violations.iterator().next().getPropertyPath().toString())
+                .isEqualTo("items[0].evidence[0].extractionMethod");
+    }
+
+    @Test
+    @DisplayName("근거 줄의 추출 방식은 RULE · LLM 만 받는다")
+    void 근거_줄은_규칙과_모델만_받는다() {
+        // MIXED 는 출처 행의 값이고 MANUAL 은 근거 없이 들어오는 정정이라 근거 한 줄의 방식이 될 수 없음
+        BulkUpsertRequest request = request(
+                List.of(new EvidenceRequest("scope", "acmpyTypeCd", null, "일부구역 동반가능", ExtractionMethod.MIXED),
+                        new EvidenceRequest("maxWeightKg", "etcAcmpyInfo", 0, "10kg 이하", ExtractionMethod.MANUAL)),
+                List.of());
+
+        Set<ConstraintViolation<BulkUpsertRequest>> violations = validator.validate(request);
+
+        assertThat(violations).extracting(violation -> violation.getPropertyPath().toString())
+                .containsExactlyInAnyOrder(
+                        "items[0].evidence[0].extractionMethodAllowed",
+                        "items[0].evidence[1].extractionMethodAllowed");
     }
 
     private static BulkUpsertRequest request(List<EvidenceRequest> evidence,

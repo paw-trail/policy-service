@@ -2,6 +2,7 @@ package com.pawtrail.policy.domain.rule;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.pawtrail.policy.domain.enums.ExtractionMethod;
 import com.pawtrail.policy.domain.enums.SourceType;
 import com.pawtrail.policy.domain.model.PolicyEvidence;
 import java.util.List;
@@ -149,9 +150,42 @@ class AdoptedEvidenceTest {
         assertThat(empty).isNotEqualTo(one);
     }
 
+    @Test
+    @DisplayName("문구가 같고 추출 방식만 다른 두 줄은 방식 순서로 늘어놓는다")
+    void 방식까지_순서를_못_박는다() {
+        // 규칙과 모델이 같은 원문 칸의 같은 문구를 근거로 대면 앞의 다섯이 모두 같음
+        PolicyEvidence rule = evidence(SourceType.PET_TOUR, "scope", "acmpyPsblCpam", null, "불가",
+                ExtractionMethod.RULE);
+        PolicyEvidence model = evidence(SourceType.PET_TOUR, "scope", "acmpyPsblCpam", null, "불가",
+                ExtractionMethod.LLM);
+        Function<String, List<SourceType>> sourcesOf = winners(Map.of("scope", List.of(SourceType.PET_TOUR)));
+
+        assertThat(AdoptedEvidence.select(List.of(model, rule), sourcesOf)).containsExactly(rule, model);
+        assertThat(AdoptedEvidence.select(List.of(rule, model), sourcesOf)).containsExactly(rule, model);
+    }
+
+    @Test
+    @DisplayName("추출 방식이 바뀌면 지문이 바뀐다")
+    void 방식이_바뀌면_지문이_바뀐다() {
+        // 판정 화면의 출처 표시가 달라지므로 판이 올라야 함
+        String rule = AdoptedEvidence.digest(List.of(
+                evidence(SourceType.PET_TOUR, "scope", "acmpyPsblCpam", null, "불가", ExtractionMethod.RULE)));
+        String model = AdoptedEvidence.digest(List.of(
+                evidence(SourceType.PET_TOUR, "scope", "acmpyPsblCpam", null, "불가", ExtractionMethod.LLM)));
+
+        assertThat(rule).isNotEqualTo(model);
+    }
+
     private static PolicyEvidence evidence(SourceType source, String fieldName, String originField,
                                            Integer segmentIndex, String segmentText) {
-        return PolicyEvidence.of(PLACE, source, fieldName, originField, segmentIndex, segmentText);
+        return evidence(source, fieldName, originField, segmentIndex, segmentText, ExtractionMethod.RULE);
+    }
+
+    private static PolicyEvidence evidence(SourceType source, String fieldName, String originField,
+                                           Integer segmentIndex, String segmentText,
+                                           ExtractionMethod extractionMethod) {
+        return PolicyEvidence.of(PLACE, source, fieldName, originField, segmentIndex, segmentText,
+                extractionMethod);
     }
 
     private static Function<String, List<SourceType>> winners(Map<String, List<SourceType>> table) {

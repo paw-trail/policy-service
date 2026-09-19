@@ -255,6 +255,55 @@ class PolicyChangedRecordTest extends IntegrationTestSupport {
         assertThat(eventsOf(placeId)).hasSize(1);
     }
 
+    @Test
+    @DisplayName("근거의 추출 방식만 바뀌어도 기록되고 바뀐 칸은 비어 있다")
+    void 추출_방식만_바뀌어도_기록된다() {
+        // 같은 문구를 이번에는 모델이 읽음 — 판정 화면의 출처 표시가 달라짐
+        UUID placeId = UUID.randomUUID();
+        policyBulkService.upsert(request(item(placeId, SourceType.PET_TOUR,
+                fieldsOf(PolicyFields.builder().scope(Scope.PARTIAL).build()),
+                List.of(evidence("scope", "acmpyPsblCpam", "일부 구역만 동반 가능", ExtractionMethod.RULE)))));
+
+        policyBulkService.upsert(request(item(placeId, SourceType.PET_TOUR,
+                fieldsOf(PolicyFields.builder().scope(Scope.PARTIAL).build()),
+                List.of(evidence("scope", "acmpyPsblCpam", "일부 구역만 동반 가능", ExtractionMethod.LLM)))));
+
+        List<RecordedEvent> events = eventsOf(placeId);
+
+        assertThat(events).hasSize(2);
+        assertThat(events.getLast().data().policyVersion()).isEqualTo(2);
+        assertThat(events.getLast().data().changedFields()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("V25 이전 근거에 추출 방식이 새로 붙어도 지문을 비운 행은 채우기만 하고 판을 올리지 않는다")
+    void 지문을_비운_행은_방식이_붙어도_채우기만_한다() {
+        // V25 가 옛 지문을 비운 뒤 extract 가 방식을 싣고 전량을 다시 보내는 자리
+        // 근거의 방식이 비어 있던 것까지 그대로 흉내 냄
+        UUID placeId = UUID.randomUUID();
+        policyBulkService.upsert(request(item(placeId, SourceType.PET_TOUR,
+                fieldsOf(PolicyFields.builder().scope(Scope.PARTIAL).build()),
+                List.of(evidence("scope", "acmpyTypeCd", "일부구역 동반가능")))));
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE policy_evidence SET extraction_method = NULL WHERE place_id = :placeId")
+                .setParameter("placeId", placeId)
+                .executeUpdate();
+        entityManager.createNativeQuery("UPDATE pet_policy SET evidence_digest = NULL WHERE place_id = :placeId")
+                .setParameter("placeId", placeId)
+                .executeUpdate();
+        entityManager.clear();
+
+        policyBulkService.upsert(request(item(placeId, SourceType.PET_TOUR,
+                fieldsOf(PolicyFields.builder().scope(Scope.PARTIAL).build()),
+                List.of(evidence("scope", "acmpyTypeCd", "일부구역 동반가능")))));
+        clear();
+
+        PetPolicy policy = petPolicyRepository.findByPlaceId(placeId).orElseThrow();
+        assertThat(policy.getPolicyVersion()).isEqualTo(1);
+        assertThat(policy.getEvidenceDigest()).hasSize(64);
+        assertThat(eventsOf(placeId)).hasSize(1);
+    }
+
     private List<RecordedEvent> eventsOf(UUID placeId) {
         entityManager.flush();
         return outboxRepository.findAll().stream()
@@ -280,7 +329,12 @@ class PolicyChangedRecordTest extends IntegrationTestSupport {
     }
 
     private static EvidenceRequest evidence(String fieldName, String originField, String text) {
-        return new EvidenceRequest(fieldName, originField, null, text);
+        return evidence(fieldName, originField, text, ExtractionMethod.RULE);
+    }
+
+    private static EvidenceRequest evidence(String fieldName, String originField, String text,
+                                            ExtractionMethod extractionMethod) {
+        return new EvidenceRequest(fieldName, originField, null, text, extractionMethod);
     }
 
     private static PolicyFieldsRequest fieldsOf(PolicyFields fields) {
